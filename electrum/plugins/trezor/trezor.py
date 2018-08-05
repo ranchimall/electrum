@@ -13,7 +13,7 @@ from electrum.keystore import Hardware_KeyStore, is_xpubkey, parse_xpubkey, xtyp
 from electrum.base_wizard import ScriptTypeNotSupported
 
 from ..hw_wallet import HW_PluginBase
-from ..hw_wallet.plugin import is_any_tx_output_on_change_branch
+from ..hw_wallet.plugin import is_any_tx_output_on_change_branch, trezor_validate_op_return_output_and_get_data
 
 
 # TREZOR initialization methods
@@ -157,7 +157,10 @@ class TrezorPlugin(HW_PluginBase):
                      'download the updated firmware from {}')
                    .format(self.device, client.label(), self.firmware_URL))
             self.print_error(msg)
-            handler.show_error(msg)
+            if handler:
+                handler.show_error(msg)
+            else:
+                raise Exception(msg)
             return None
 
         return client
@@ -362,7 +365,7 @@ class TrezorPlugin(HW_PluginBase):
         for txin in tx.inputs():
             txinputtype = self.types.TxInputType()
             if txin['type'] == 'coinbase':
-                prev_hash = "\0"*32
+                prev_hash = b"\x00"*32
                 prev_index = 0xffffffff  # signed int -1
             else:
                 if for_sig:
@@ -461,7 +464,7 @@ class TrezorPlugin(HW_PluginBase):
             txoutputtype.amount = amount
             if _type == TYPE_SCRIPT:
                 txoutputtype.script_type = self.types.OutputScriptType.PAYTOOPRETURN
-                txoutputtype.op_return_data = address[2:]
+                txoutputtype.op_return_data = trezor_validate_op_return_output_and_get_data(o)
             elif _type == TYPE_ADDRESS:
                 txoutputtype.script_type = self.types.OutputScriptType.PAYTOADDRESS
                 txoutputtype.address = address
@@ -471,7 +474,8 @@ class TrezorPlugin(HW_PluginBase):
         has_change = False
         any_output_on_change_branch = is_any_tx_output_on_change_branch(tx)
 
-        for _type, address, amount in tx.outputs():
+        for o in tx.outputs():
+            _type, address, amount = o.type, o.address, o.value
             use_create_by_derivation = False
 
             info = tx.output_info.get(address)

@@ -4,7 +4,8 @@ import time
 import os
 import stat
 from decimal import Decimal
-from typing import Union
+from typing import Union, Optional
+from numbers import Real
 
 from copy import deepcopy
 
@@ -295,35 +296,51 @@ class SimpleConfig(PrintError):
             return fee
         return get_fee_within_limits
 
-    @impose_hard_limits_on_fee
-    def eta_to_fee(self, slider_pos) -> Union[int, None]:
+    def eta_to_fee(self, slider_pos) -> Optional[int]:
         """Returns fee in sat/kbyte."""
         slider_pos = max(slider_pos, 0)
         slider_pos = min(slider_pos, len(FEE_ETA_TARGETS))
         if slider_pos < len(FEE_ETA_TARGETS):
-            target_blocks = FEE_ETA_TARGETS[slider_pos]
-            fee = self.fee_estimates.get(target_blocks)
+            num_blocks = FEE_ETA_TARGETS[slider_pos]
+            fee = self.eta_target_to_fee(num_blocks)
         else:
-            fee = self.fee_estimates.get(2)
-            if fee is not None:
-                fee += fee/2
-                fee = int(fee)
+            fee = self.eta_target_to_fee(1)
         return fee
 
-    def fee_to_depth(self, target_fee):
+    @impose_hard_limits_on_fee
+    def eta_target_to_fee(self, num_blocks: int) -> Optional[int]:
+        """Returns fee in sat/kbyte."""
+        if num_blocks == 1:
+            fee = self.fee_estimates.get(2)
+            if fee is not None:
+                fee += fee / 2
+                fee = int(fee)
+        else:
+            fee = self.fee_estimates.get(num_blocks)
+        return fee
+
+    def fee_to_depth(self, target_fee: Real) -> int:
+        """For a given sat/vbyte fee, returns an estimate of how deep
+        it would be in the current mempool in vbytes.
+        Pessimistic == overestimates the depth.
+        """
         depth = 0
         for fee, s in self.mempool_fees:
             depth += s
             if fee <= target_fee:
                 break
-        else:
-            return 0
         return depth
 
-    @impose_hard_limits_on_fee
     def depth_to_fee(self, slider_pos) -> int:
         """Returns fee in sat/kbyte."""
         target = self.depth_target(slider_pos)
+        return self.depth_target_to_fee(target)
+
+    @impose_hard_limits_on_fee
+    def depth_target_to_fee(self, target: int) -> int:
+        """Returns fee in sat/kbyte.
+        target: desired mempool depth in vbytes
+        """
         depth = 0
         for fee, s in self.mempool_fees:
             depth += s
@@ -331,6 +348,10 @@ class SimpleConfig(PrintError):
                 break
         else:
             return 0
+        # add one sat/byte as currently that is
+        # the max precision of the histogram
+        fee += 1
+        # convert to sat/kbyte
         return fee * 1000
 
     def depth_target(self, slider_pos):

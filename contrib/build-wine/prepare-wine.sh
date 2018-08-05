@@ -79,11 +79,6 @@ retry() {
 here=$(dirname $(readlink -e $0))
 set -e
 
-# Clean up Wine environment
-echo "Cleaning $WINEPREFIX"
-rm -rf $WINEPREFIX
-echo "done"
-
 wine 'wineboot'
 
 # HACK to work around https://bugs.winehq.org/show_bug.cgi?id=42474#c22
@@ -101,8 +96,7 @@ KEYRING_PYTHON_DEV="keyring-electrum-build-python-dev.gpg"
 for server in $(shuf -e ha.pool.sks-keyservers.net \
                         hkp://p80.pool.sks-keyservers.net:80 \
                         keyserver.ubuntu.com \
-                        hkp://keyserver.ubuntu.com:80 \
-                        pgp.mit.edu) ; do
+                        hkp://keyserver.ubuntu.com:80) ; do
     retry gpg --no-default-keyring --keyring $KEYRING_PYTHON_DEV --keyserver "$server" --recv-keys $KEYLIST_PYTHON_DEV \
     && break || : ;
 done

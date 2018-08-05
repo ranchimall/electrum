@@ -31,13 +31,15 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
+import qrcode
+from qrcode import exceptions
+
 from electrum.bitcoin import base_encode
 from electrum.i18n import _
 from electrum.plugin import run_hook
 from electrum import simple_config
 
 from electrum.util import bfh
-from electrum.wallet import AddTransactionException
 from electrum.transaction import SerializationError
 
 from .util import *
@@ -184,8 +186,11 @@ class TxDialog(QDialog, MessageBoxMixin):
         text = base_encode(text, base=43)
         try:
             self.main_window.show_qrcode(text, 'Transaction', parent=self)
+        except qrcode.exceptions.DataOverflowError:
+            self.show_error(_('Failed to display QR code.') + '\n' +
+                            _('Transaction is too large in size.'))
         except Exception as e:
-            self.show_message(str(e))
+            self.show_error(_('Failed to display QR code.') + '\n' + str(e))
 
     def sign(self):
         def sign_done(success):

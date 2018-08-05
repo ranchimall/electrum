@@ -26,7 +26,6 @@ from collections import namedtuple
 import traceback
 import sys
 import os
-import imp
 import pkgutil
 import time
 import threading
@@ -43,6 +42,7 @@ hooks = {}
 
 
 class Plugins(DaemonThread):
+    verbosity_filter = 'p'
 
     @profiler
     def __init__(self, config, is_local, gui_name):

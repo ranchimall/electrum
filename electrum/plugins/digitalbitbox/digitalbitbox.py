@@ -120,8 +120,8 @@ class DigitalBitbox_Client():
 
 
     def stretch_key(self, key):
-        import pbkdf2, hmac
-        return to_hexstr(pbkdf2.PBKDF2(key, b'Digital Bitbox', iterations = 20480, macmodule = hmac, digestmodule = hashlib.sha512).read(64))
+        import hmac
+        return to_hexstr(hashlib.pbkdf2_hmac('sha512', key.encode('utf-8'), b'Digital Bitbox', iterations = 20480))
 
 
     def backup_password_dialog(self):
@@ -534,9 +534,9 @@ class DigitalBitbox_KeyStore(Hardware_KeyStore):
                     self.give_error("No matching x_key for sign_transaction") # should never happen
 
             # Build pubkeyarray from outputs
-            for _type, address, amount in tx.outputs():
-                assert _type == TYPE_ADDRESS
-                info = tx.output_info.get(address)
+            for o in tx.outputs():
+                assert o.type == TYPE_ADDRESS
+                info = tx.output_info.get(o.address)
                 if info is not None:
                     index, xpubs, m = info
                     changePath = self.get_derivation() + "/%d/%d" % index
