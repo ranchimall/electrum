@@ -486,6 +486,11 @@ class Abstract_Wallet(AddressSynchronizer):
             return ', '.join(labels)
         return ''
 
+    def get_tx_comment(self, tx_hash):
+        tx = self.transactions.get(tx_hash)
+        comment = tx.txcomment[5:]
+        return comment
+
     def get_tx_status(self, tx_hash, tx_mined_status):
         extra = []
         height = tx_mined_status.height
@@ -533,7 +538,7 @@ class Abstract_Wallet(AddressSynchronizer):
         return dust_threshold(self.network)
 
     def make_unsigned_transaction(self, inputs, outputs, config, fixed_fee=None,
-                                  change_addr=None, is_sweep=False):
+                                  change_addr=None, is_sweep=False, txcomment = ""):
         # check outputs
         i_max = None
         for i, o in enumerate(outputs):
@@ -604,6 +609,10 @@ class Abstract_Wallet(AddressSynchronizer):
         tx.BIP_LI01_sort()
         # Timelock tx to current height.
         tx.locktime = self.get_local_height()
+        # Transactions with transaction comments/floData are version 2
+        if txcomment != "":
+            tx.version = 2
+            tx.txcomment = "text:" + txcomment
         run_hook('make_unsigned_transaction', self, tx)
         return tx
 
