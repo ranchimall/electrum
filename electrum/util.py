@@ -347,7 +347,7 @@ def android_data_dir():
     return PythonActivity.mActivity.getFilesDir().getPath() + '/data'
 
 def android_headers_dir():
-    d = android_ext_dir() + '/org.electrum.electrum'
+    d = android_ext_dir() + '/org.electrum.electrum-flo'
     if not os.path.exists(d):
         try:
             os.mkdir(d)
@@ -359,7 +359,7 @@ def android_check_data_dir():
     """ if needed, move old directory to sandbox """
     ext_dir = android_ext_dir()
     data_dir = android_data_dir()
-    old_electrum_dir = ext_dir + '/electrum'
+    old_electrum_dir = ext_dir + '/electrum-flo'
     if not os.path.exists(data_dir) and os.path.exists(old_electrum_dir):
         import shutil
         new_headers_path = android_headers_dir() + '/blockchain_headers'
@@ -461,11 +461,11 @@ def user_dir():
     if 'ANDROID_DATA' in os.environ:
         return android_check_data_dir()
     elif os.name == 'posix':
-        return os.path.join(os.environ["HOME"], ".electrum")
+        return os.path.join(os.environ["HOME"], ".electrum-flo")
     elif "APPDATA" in os.environ:
-        return os.path.join(os.environ["APPDATA"], "Electrum")
+        return os.path.join(os.environ["APPDATA"], "Electrum-FLO")
     elif "LOCALAPPDATA" in os.environ:
-        return os.path.join(os.environ["LOCALAPPDATA"], "Electrum")
+        return os.path.join(os.environ["LOCALAPPDATA"], "Electrum-FLO")
     else:
         #raise Exception("No home directory found in environment variables.")
         return
