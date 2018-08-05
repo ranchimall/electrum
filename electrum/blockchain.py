@@ -28,7 +28,14 @@ from .bitcoin import Hash, hash_encode, int_to_hex, rev_hex
 from . import constants
 from .util import bfh, bh2u
 
-MAX_TARGET = 0x00000000FFFF0000000000000000000000000000000000000000000000000000
+try:
+    import scrypt
+    getPoWHash = lambda x: scrypt.hash(x, x, N=1024, r=1, p=1, buflen=32)
+except ImportError:
+    util.print_msg("Warning: package scrypt not available; synchronization could be very slow")
+    from .scrypt import scrypt_1024_1_1_80 as getPoWHash
+
+MAX_TARGET = 0x00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 
 
 class MissingHeader(Exception):
@@ -69,6 +76,8 @@ def hash_header(header):
         header['prev_block_hash'] = '00'*32
     return hash_encode(Hash(bfh(serialize_header(header))))
 
+def pow_hash_header(header):
+    return hash_encode(getPoWHash(bfh(serialize_header(header))))
 
 blockchains = {}
 
@@ -168,25 +177,36 @@ class Blockchain(util.PrintError):
 
     def verify_header(self, header, prev_hash, target):
         _hash = hash_header(header)
-        #if prev_hash != header.get('prev_block_hash'):
-        #    raise Exception("prev hash mismatch: %s vs %s" % (prev_hash, header.get('prev_block_hash')))
-        #if constants.net.TESTNET:
-        #    return
-        bits = self.target_to_bits(target)
-        #if bits != header.get('bits'):
-        #    raise Exception("bits mismatch: %s vs %s" % (bits, header.get('bits')))
-        #if int('0x' + _hash, 16) > target:
-        #    raise Exception("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target))
+        _powhash = pow_hash_header(header)
+        if prev_hash != header.get('prev_block_hash'):
+            raise Exception("prev hash mismatch: %s vs %s" % (prev_hash, header.get('prev_block_hash')))
+        if constants.net.TESTNET:
+            return
+        print("I'm inside verify_header")
+        #bits = self.target_to_bits(target)
+        bits = target
+        if bits != header.get('bits'):
+            raise Exception("bits mismatch: %s vs %s" % (bits, header.get('bits')))
+        block_hash = int('0x' + _hash, 16)
+        target_val = self.bits_to_target(bits)
+        if int('0x' + _powhash, 16) > target_val:
+            raise Exception("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target_val))
+        print("I passed verify_header(). Calc target values have been matched")
 
     def verify_chunk(self, index, data):
         num = len(data) // 80
-        prev_hash = self.get_hash(index * 2016 - 1)
-        target = self.get_target(index-1)
+        current_header = (index * 2016)
+        # last = (index * 2016 + 2015)
+        prev_hash = self.get_hash(current_header - 1)
         for i in range(num):
+            target = self.get_target(current_header - 1)
             raw_header = data[i*80:(i+1) * 80]
-            header = deserialize_header(raw_header, index*2016 + i)
+            header = deserialize_header(raw_header, current_header)
+            print(i)
             self.verify_header(header, prev_hash, target)
+            self.save_chunk_part(header)
             prev_hash = hash_header(header)
+            current_header = current_header + 1
 
     def path(self):
         d = util.get_headers_dir(self.config)
@@ -202,15 +222,15 @@ class Blockchain(util.PrintError):
             main_chain.save_chunk(index, chunk)
             return
 
-        delta_height = (index * 2016 - self.forkpoint)
+        #delta_height = (index * 2016 - self.forkpoint)
         delta_bytes = delta_height * 80
         # if this chunk contains our forkpoint, only save the part after forkpoint
         # (the part before is the responsibility of the parent)
-        if delta_bytes < 0:
-            chunk = chunk[-delta_bytes:]
-            delta_bytes = 0
-        truncate = not chunk_within_checkpoint_region
-        self.write(chunk, delta_bytes, truncate)
+        #if delta_bytes < 0:
+        #    chunk = chunk[-delta_bytes:]
+        #    delta_bytes = 0
+        #truncate = not chunk_within_checkpoint_region
+        #self.write(chunk, delta_bytes, truncate)
         self.swap_with_parent()
 
     @with_lock
@@ -319,29 +339,58 @@ class Blockchain(util.PrintError):
         # compute target from chunk x, used in chunk x+1
         if constants.net.TESTNET:
             return 0
-        if index == -1:
-            return MAX_TARGET
+            # The range is first 90 blocks because FLO's block time was 90 blocks when it started
+        if -1 <= index <= 88:
+            return 0x1e0ffff0
         if index < len(self.checkpoints):
             h, t = self.checkpoints[index]
             return t
         # new target
-        first = self.read_header(index * 2016)
-        last = self.read_header(index * 2016 + 2015)
-        if not first or not last:
-            raise MissingHeader()
-        bits = last.get('bits')
-        target = self.bits_to_target(bits)
-        nActualTimespan = last.get('timestamp') - first.get('timestamp')
-        nTargetTimespan = 14 * 24 * 60 * 60
-        nActualTimespan = max(nActualTimespan, nTargetTimespan // 4)
-        nActualTimespan = min(nActualTimespan, nTargetTimespan * 4)
-        new_target = min(MAX_TARGET, (target * nActualTimespan) // nTargetTimespan)
-        return new_target
+        headerLast = self.read_header(index)
+        height = headerLast["block_height"]
+        # check if the height passes is in range for retargeting
+        if (height + 1) % self.DifficultyAdjustmentInterval(height + 1) != 0:
+            return int(headerLast["bits"])
+        averagingInterval = self.AveragingInterval(height + 1)
+        blockstogoback = averagingInterval - 1
+        # print("Blocks to go back = " + str(blockstogoback))
+        if (height + 1) != averagingInterval:
+            blockstogoback = averagingInterval
+        firstHeight = height - blockstogoback
+        headerFirst = self.read_header(int(firstHeight))
+        firstBlockTime = headerFirst["timestamp"]
+        nMinActualTimespan = int(self.MinActualTimespan(int(headerLast["block_height"]) + 1))
+
+        nMaxActualTimespan = int(self.MaxActualTimespan(int(headerLast["block_height"]) + 1))
+        # Limit adjustment step
+        nActualTimespan = headerLast["timestamp"] - firstBlockTime
+        if nActualTimespan < nMinActualTimespan:
+            nActualTimespan = nMinActualTimespan
+        if nActualTimespan > nMaxActualTimespan:
+            nActualTimespan = nMaxActualTimespan
+        # Retarget
+        bnNewBits = int(headerLast["bits"])
+        bnNew = self.bits_to_target(bnNewBits)
+        bnOld = bnNew
+        # FLO: intermediate uint256 can overflow by 1 bit
+        # const arith_uint256 bnPowLimit = UintToArith256(params.powLimit);
+        fShift = bnNew > MAX_TARGET - 1
+
+        if (fShift):
+            bnNew = bnNew >> 1
+        bnNew = bnNew * nActualTimespan
+        bnNew = bnNew / self.TargetTimespan(headerLast["block_height"] + 1)
+        if fShift:
+            bnNew = bnNew << 1
+        if bnNew > MAX_TARGET:
+            bnNew = MAX_TARGET
+        bnNew = self.target_to_bits(int(bnNew))
+        return bnNew
 
     def bits_to_target(self, bits):
         bitsN = (bits >> 24) & 0xff
-        if not (bitsN >= 0x03 and bitsN <= 0x1d):
-            raise Exception("First part of bits should be in [0x03, 0x1d]")
+        if not (bitsN >= 0x03 and bitsN <= 0x1e):
+            raise BaseException("First part of bits should be in [0x03, 0x1e]")
         bitsBase = bits & 0xffffff
         if not (bitsBase >= 0x8000 and bitsBase <= 0x7fffff):
             raise Exception("Second part of bits should be in [0x8000, 0x7fffff]")
@@ -373,7 +422,7 @@ class Blockchain(util.PrintError):
         if prev_hash != header.get('prev_block_hash'):
             return False
         try:
-            target = self.get_target(height // 2016 - 1)
+            target = self.get_target(height - 1)
         except MissingHeader:
             return False
         try:
@@ -402,3 +451,67 @@ class Blockchain(util.PrintError):
             target = self.get_target(index)
             cp.append((h, target))
         return cp
+
+    def AveragingInterval(self, height):
+        # V1
+        if height < constants.net.nHeight_Difficulty_Version2:
+            return constants.net.nAveragingInterval_Version1
+        # V2
+        elif height < constants.net.nHeight_Difficulty_Version3:
+            return constants.net.nAveragingInterval_Version2
+        # V3
+        else:
+            return constants.net.nAveragingInterval_Version3
+
+    def MinActualTimespan(self, height):
+        averagingTargetTimespan = self.AveragingInterval(height) * constants.net.nPowTargetSpacing
+        # V1
+        if height < constants.net.nHeight_Difficulty_Version2:
+            return int(averagingTargetTimespan * (100 - constants.net.nMaxAdjustUp_Version1) / 100)
+        # V2
+        elif height < constants.net.nHeight_Difficulty_Version3:
+            return int(averagingTargetTimespan * (100 - constants.net.nMaxAdjustUp_Version2) / 100)
+        # V3
+        else:
+            return int(averagingTargetTimespan * (100 - constants.net.nMaxAdjustUp_Version3) / 100)
+
+    def MaxActualTimespan(self, height):
+        averagingTargetTimespan = self.AveragingInterval(height) * constants.net.nPowTargetSpacing
+        # V1
+        if height < constants.net.nHeight_Difficulty_Version2:
+            return int(averagingTargetTimespan * (100 + constants.net.nMaxAdjustDown_Version1) / 100)
+        # V2
+        elif height < constants.net.nHeight_Difficulty_Version3:
+            return int(averagingTargetTimespan * (100 + constants.net.nMaxAdjustDown_Version2) / 100)
+        # V3
+        else:
+            return int(averagingTargetTimespan * (100 + constants.net.nMaxAdjustDown_Version3) / 100)
+
+    def TargetTimespan(self, height):
+        # V1
+        if height < constants.net.nHeight_Difficulty_Version2:
+            return constants.net.nTargetTimespan_Version1
+        # V2
+        if height < constants.net.nHeight_Difficulty_Version3:
+            return constants.net.nAveragingInterval_Version2 * constants.net.nPowTargetSpacing
+        # V3
+        return constants.net.nAveragingInterval_Version3 * constants.net.nPowTargetSpacing
+
+    def DifficultyAdjustmentInterval(self, height):
+        # V1
+        if height < constants.net.nHeight_Difficulty_Version2:
+            return constants.net.nInterval_Version1
+        # V2
+        if height < constants.net.nHeight_Difficulty_Version3:
+            return constants.net.nInterval_Version2
+        # V3
+        return constants.net.nInterval_Version3
+
+    def save_chunk_part(self, header):
+        filename = self.path()
+        delta = header.get('block_height') - self.checkpoint
+        data = bfh(serialize_header(header))
+        # assert delta == self.size()
+        assert len(data) == 80
+        self.write(data, delta * 80)
+        # self.swap_with_parent()

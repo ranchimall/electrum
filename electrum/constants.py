@@ -64,6 +64,31 @@ class BitcoinMainnet:
         'p2wsh':       0x02aa7ed3,  # Zpub
     }
     BIP44_COIN_TYPE = 2
+    # FLO Network constants
+    fPowAllowMinDifficultyBlocks = False
+    fPowNoRetargeting = False
+    nRuleChangeActivationThreshold = 6048  # 75% of 8064
+    nMinerConfirmationWindow = 8064
+    # Difficulty adjustments
+    nPowTargetSpacing = 40  # 40s block time
+    # V1
+    nTargetTimespan_Version1 = 60 * 60
+    nInterval_Version1 = nTargetTimespan_Version1 / nPowTargetSpacing
+    nMaxAdjustUp_Version1 = 75
+    nMaxAdjustDown_Version1 = 300
+    nAveragingInterval_Version1 = nInterval_Version1
+    # V2
+    nHeight_Difficulty_Version2 = 208440
+    nInterval_Version2 = 15
+    nMaxAdjustDown_Version2 = 300
+    nMaxAdjustUp_Version2 = 75
+    nAveragingInterval_Version2 = nInterval_Version2
+    # V3
+    nHeight_Difficulty_Version3 = 426000
+    nInterval_Version3 = 1
+    nMaxAdjustDown_Version3 = 3
+    nMaxAdjustUp_Version3 = 2
+    nAveragingInterval_Version3 = 6
 
 
 class BitcoinTestnet:
@@ -93,6 +118,26 @@ class BitcoinTestnet:
         'p2wsh':       0x02575483,  # Vpub
     }
     BIP44_COIN_TYPE = 1
+    #Difficulty adjustments
+    nPowTargetSpacing = 40 # 40 block time
+    # V1
+    nTargetTimespan_Version1 = 60 * 60
+    nInterval_Version1 = nTargetTimespan_Version1 / nPowTargetSpacing;
+    nMaxAdjustUp_Version1 = 75
+    nMaxAdjustDown_Version1 = 300
+    nAveragingInterval_Version1 = nInterval_Version1
+    # V2
+    nHeight_Difficulty_Version2 = 50000
+    nInterval_Version2 = 15
+    nMaxAdjustDown_Version2 = 300
+    nMaxAdjustUp_Version2 = 75
+    nAveragingInterval_Version2 = nInterval_Version2
+    # V3
+    nHeight_Difficulty_Version3 = 60000
+    nInterval_Version3 = 1
+    nMaxAdjustDown_Version3 = 3
+    nMaxAdjustUp_Version3 = 2
+    nAveragingInterval_Version3 = 6
 
 
 class BitcoinRegtest(BitcoinTestnet):
