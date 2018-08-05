@@ -509,7 +509,7 @@ class Blockchain(util.PrintError):
 
     def save_chunk_part(self, header):
         filename = self.path()
-        delta = header.get('block_height') - self.checkpoint
+        delta = header.get('block_height')
         data = bfh(serialize_header(header))
         # assert delta == self.size()
         assert len(data) == 80
