@@ -114,6 +114,8 @@ class TxDialog(QDialog, MessageBoxMixin):
         vbox.addWidget(self.size_label)
         self.fee_label = QLabel()
         vbox.addWidget(self.fee_label)
+        self.txcomment_label = QLabel()
+        vbox.addWidget(self.txcomment_label)
 
         self.add_io(vbox)
 
@@ -269,6 +271,7 @@ class TxDialog(QDialog, MessageBoxMixin):
         self.amount_label.setText(amount_str)
         self.fee_label.setText(fee_str)
         self.size_label.setText(size_str)
+        self.txcomment_label.setText("TX Comment: " + self.tx.txcomment)
         run_hook('transaction_dialog_update', self)
 
     def add_io(self, vbox):

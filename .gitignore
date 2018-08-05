@@ -16,7 +16,7 @@ env/
 .buildozer/
 bin/
 /app.fil
-
+.idea/
 # tox files
 .cache/
 .coverage

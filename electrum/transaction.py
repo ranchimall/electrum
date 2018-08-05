@@ -34,6 +34,7 @@ from .util import print_error, profiler
 from . import ecc
 from . import bitcoin
 from .bitcoin import *
+import codecs
 import struct
 import traceback
 import sys
@@ -596,6 +597,10 @@ def deserialize(raw: str, force_full_parse=False) -> dict:
             txin = d['inputs'][i]
             parse_witness(vds, txin, full_parse=full_parse)
     d['lockTime'] = vds.read_uint32()
+    if d['version'] >= 2:
+        d['txcomment'] = vds.read_string()
+    else:
+        d['txcomment'] = ""
     if vds.can_read_more():
         raise SerializationError('extra junk at the end')
     return d
@@ -636,6 +641,7 @@ class Transaction:
         self._inputs = None
         self._outputs = None
         self.locktime = 0
+        self.txcomment = ""
         self.version = 1
         # by default we assume this is a partial txn;
         # this value will get properly set when deserializing
@@ -728,16 +734,18 @@ class Transaction:
         self._outputs = [TxOutput(x['type'], x['address'], x['value']) for x in d['outputs']]
         self.locktime = d['lockTime']
         self.version = d['version']
+        self.txcomment = d['txcomment']
         self.is_partial_originally = d['partial']
         self._segwit_ser = d['segwit_ser']
         return d
 
     @classmethod
-    def from_io(klass, inputs, outputs, locktime=0):
+    def from_io(klass, inputs, outputs, locktime=0, txcomment=""):
         self = klass(None)
         self._inputs = inputs
         self._outputs = outputs
         self.locktime = locktime
+        self.txcomment = txcomment
         return self
 
     @classmethod
@@ -989,6 +997,7 @@ class Transaction:
         nVersion = int_to_hex(self.version, 4)
         nHashType = int_to_hex(1, 4)
         nLocktime = int_to_hex(self.locktime, 4)
+        nTxComment = var_int(len(self.txcomment)) + str(codecs.encode(bytes(self.txcomment, 'utf-8'), 'hex_codec'), 'utf-8')
         inputs = self.inputs()
         outputs = self.outputs()
         txin = inputs[i]
@@ -1002,11 +1011,17 @@ class Transaction:
             scriptCode = var_int(len(preimage_script) // 2) + preimage_script
             amount = int_to_hex(txin['value'], 8)
             nSequence = int_to_hex(txin.get('sequence', 0xffffffff - 1), 4)
-            preimage = nVersion + hashPrevouts + hashSequence + outpoint + scriptCode + amount + nSequence + hashOutputs + nLocktime + nHashType
+            if self.version >= 2:
+                preimage = nVersion + hashPrevouts + hashSequence + outpoint + scriptCode + amount + nSequence + hashOutputs + nLocktime + nTxComment + nHashType
+            else:
+                preimage = nVersion + hashPrevouts + hashSequence + outpoint + scriptCode + amount + nSequence + hashOutputs + nLocktime + nHashType
         else:
             txins = var_int(len(inputs)) + ''.join(self.serialize_input(txin, self.get_preimage_script(txin) if i==k else '') for k, txin in enumerate(inputs))
             txouts = var_int(len(outputs)) + ''.join(self.serialize_output(o) for o in outputs)
-            preimage = nVersion + txins + txouts + nLocktime + nHashType
+            if self.version >= 2:
+                preimage = nVersion + txins + txouts + nLocktime + nTxComment + nHashType
+            else:
+                preimage = nVersion + txins + txouts + nLocktime + nHashType
         return preimage
 
     def is_segwit(self, guess_for_address=False):
@@ -1027,6 +1042,7 @@ class Transaction:
     def serialize_to_network(self, estimate_size=False, witness=True):
         nVersion = int_to_hex(self.version, 4)
         nLocktime = int_to_hex(self.locktime, 4)
+        nTxComment = var_int(len(self.txcomment)) + str(codecs.encode(bytes(self.txcomment, 'utf-8'), 'hex_codec'), 'utf-8')
         inputs = self.inputs()
         outputs = self.outputs()
         txins = var_int(len(inputs)) + ''.join(self.serialize_input(txin, self.input_script(txin, estimate_size)) for txin in inputs)
@@ -1039,9 +1055,15 @@ class Transaction:
             marker = '00'
             flag = '01'
             witness = ''.join(self.serialize_witness(x, estimate_size) for x in inputs)
-            return nVersion + marker + flag + txins + txouts + witness + nLocktime
+            if self.version >= 2:
+                return nVersion + marker + flag + txins + txouts + witness + nLocktime + nTxComment
+            else:
+                return nVersion + marker + flag + txins + txouts + witness + nLocktime
         else:
-            return nVersion + txins + txouts + nLocktime
+            if self.version >= 2:
+                return nVersion + txins + txouts + nLocktime + nTxComment
+            else:
+                return nVersion + txins + txouts + nLocktime
 
     def txid(self):
         self.deserialize()
