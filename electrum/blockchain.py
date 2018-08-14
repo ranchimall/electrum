@@ -215,15 +215,15 @@ class Blockchain(util.PrintError):
 
     @with_lock
     def save_chunk(self, index, chunk):
-        chunk_within_checkpoint_region = index < len(self.checkpoints)
+        #chunk_within_checkpoint_region = index < len(self.checkpoints)
         # chunks in checkpoint region are the responsibility of the 'main chain'
-        if chunk_within_checkpoint_region and self.parent_id is not None:
-            main_chain = blockchains[0]
-            main_chain.save_chunk(index, chunk)
-            return
+        #if chunk_within_checkpoint_region and self.parent_id is not None:
+        #    main_chain = blockchains[0]
+        #    main_chain.save_chunk(index, chunk)
+        #    return
 
         #delta_height = (index * 2016 - self.forkpoint)
-        delta_bytes = delta_height * 80
+        #delta_bytes = delta_height * 80
         # if this chunk contains our forkpoint, only save the part after forkpoint
         # (the part before is the responsibility of the parent)
         #if delta_bytes < 0:

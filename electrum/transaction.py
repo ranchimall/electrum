@@ -1020,6 +1020,8 @@ class Transaction:
             txouts = var_int(len(outputs)) + ''.join(self.serialize_output(o) for o in outputs)
             if self.version >= 2:
                 preimage = nVersion + txins + txouts + nLocktime + nTxComment + nHashType
+                print("preimage")
+                print(preimage)
             else:
                 preimage = nVersion + txins + txouts + nLocktime + nHashType
         return preimage
@@ -1061,6 +1063,8 @@ class Transaction:
                 return nVersion + marker + flag + txins + txouts + witness + nLocktime
         else:
             if self.version >= 2:
+                print("Before serialize to network ")
+                print(nVersion + txins + txouts + nLocktime + nTxComment)
                 return nVersion + txins + txouts + nLocktime + nTxComment
             else:
                 return nVersion + txins + txouts + nLocktime
