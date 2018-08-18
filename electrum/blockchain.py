@@ -182,7 +182,7 @@ class Blockchain(util.PrintError):
             raise Exception("prev hash mismatch: %s vs %s" % (prev_hash, header.get('prev_block_hash')))
         if constants.net.TESTNET:
             return
-        print("I'm inside verify_header")
+        #print("I'm inside verify_header")
         #bits = self.target_to_bits(target)
         bits = target
         if bits != header.get('bits'):
@@ -191,18 +191,19 @@ class Blockchain(util.PrintError):
         target_val = self.bits_to_target(bits)
         if int('0x' + _powhash, 16) > target_val:
             raise Exception("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target_val))
-        print("I passed verify_header(). Calc target values have been matched")
+        #print("I passed verify_header(). Calc target values have been matched")
 
     def verify_chunk(self, index, data):
         num = len(data) // 80
         current_header = (index * 2016)
         # last = (index * 2016 + 2015)
+        print(index*2016)
         prev_hash = self.get_hash(current_header - 1)
         for i in range(num):
             target = self.get_target(current_header - 1)
             raw_header = data[i*80:(i+1) * 80]
             header = deserialize_header(raw_header, current_header)
-            print(i)
+            #print(i)
             self.verify_header(header, prev_hash, target)
             self.save_chunk_part(header)
             prev_hash = hash_header(header)

@@ -208,11 +208,13 @@ class Bitvalor(ExchangeBase):
         return {'BRL': Decimal(json['ticker_1h']['total']['last'])}
 
 
-class BlockchainInfo(ExchangeBase):
+class Bittrex(ExchangeBase):
 
     def get_rates(self, ccy):
+        json = self.get_json('bittrex.com','/api/v1.1/public/getticker?market=BTC-FLO')
+        floPrice_inBTC = json['result']['Last']
         json = self.get_json('blockchain.info', '/ticker')
-        return dict([(r, Decimal(json[r]['15m'])) for r in json])
+        return dict([(r, Decimal(json[r]['15m'] * floPrice_inBTC)) for r in json])
 
 
 class BTCChina(ExchangeBase):
