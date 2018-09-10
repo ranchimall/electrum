@@ -401,7 +401,7 @@ class Abstract_Wallet(AddressSynchronizer):
                 'value': Satoshis(value),
                 'balance': Satoshis(balance),
                 'date': timestamp_to_datetime(timestamp),
-                'label': self.get_label(tx_hash),
+                'label': self.get_label(tx_hash)
             }
             if show_addresses:
                 tx = self.transactions.get(tx_hash)
@@ -486,10 +486,6 @@ class Abstract_Wallet(AddressSynchronizer):
             return ', '.join(labels)
         return ''
 
-    def get_tx_comment(self, tx_hash):
-        tx = self.transactions.get(tx_hash)
-        comment = tx.txcomment[5:]
-        return comment
 
     def get_tx_status(self, tx_hash, tx_mined_status):
         extra = []

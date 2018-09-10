@@ -1067,12 +1067,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.message_e = MyLineEdit()
         grid.addWidget(self.message_e, 2, 1, 1, -1)
 
-        msg = _('This is where you write the FLO Data for the transaction')
-        txcomment_label = HelpLabel(_('FLO Data'), msg)
-        grid.addWidget(txcomment_label, 7, 0)
-        self.message_tx = MyLineEdit()
-        grid.addWidget(self.message_tx, 7, 1, 1, -1)
-
         self.from_label = QLabel(_('From'))
         grid.addWidget(self.from_label, 3, 0)
         self.from_list = MyTreeWidget(self, self.from_list_menu, ['',''])
@@ -1103,7 +1097,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         hbox.addStretch(1)
         grid.addLayout(hbox, 4, 4)
 
-        msg = _('Bitcoin transactions are in general not free. A transaction fee is paid by the sender of the funds.') + '\n\n'\
+        msg = _('FLO transactions are in general not free. A transaction fee is paid by the sender of the funds.') + '\n\n'\
               + _('The amount of fee can be decided freely by the sender. However, transactions with low fees take more time to be processed.') + '\n\n'\
               + _('A suggested fee is automatically added to this field. You may override it. The suggested fee increases with the size of the transaction.')
         self.fee_e_label = HelpLabel(_('Fee'), msg)
@@ -1202,6 +1196,12 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         if not self.config.get('show_fee', False):
             self.fee_adv_controls.setVisible(False)
 
+        msg = _('This is where you write the FLO Data for the transaction')
+        txcomment_label = HelpLabel(_('FLO Data'), msg)
+        grid.addWidget(txcomment_label, 6, 0)
+        self.message_tx = MyLineEdit()
+        grid.addWidget(self.message_tx, 6, 1, 1, -1)
+
         self.preview_button = EnterButton(_("Preview"), self.do_preview)
         self.preview_button.setToolTip(_('Display the details of your transaction before signing it.'))
         self.send_button = EnterButton(_("Send"), self.do_send)
@@ -1211,7 +1211,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         buttons.addWidget(self.clear_button)
         buttons.addWidget(self.preview_button)
         buttons.addWidget(self.send_button)
-        grid.addLayout(buttons, 6, 1, 1, 3)
+        grid.addLayout(buttons, 7, 1, 1, 3)
 
         self.amount_e.shortcut.connect(self.spend_max)
         self.payto_e.textChanged.connect(self.update_fee)
