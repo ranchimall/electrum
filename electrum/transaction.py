@@ -1063,8 +1063,6 @@ class Transaction:
                 return nVersion + marker + flag + txins + txouts + witness + nLocktime
         else:
             if self.version >= 2:
-                print("Before serialize to network ")
-                print(nVersion + txins + txouts + nLocktime + nTxComment)
                 return nVersion + txins + txouts + nLocktime + nTxComment
             else:
                 return nVersion + txins + txouts + nLocktime
