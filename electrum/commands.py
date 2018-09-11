@@ -187,7 +187,7 @@ class Commands:
     def listunspent(self):
         """List unspent outputs. Returns the list of unspent transaction
         outputs in your wallet."""
-        l = copy.deepcopy(self.wallet.get_utxos(exclude_frozen=False))
+        l = copy.deepcopy(self.wallet.get_utxos())
         for i in l:
             v = i["value"]
             i["value"] = str(Decimal(v)/COIN) if v is not None else None
@@ -255,7 +255,7 @@ class Commands:
     def broadcast(self, tx):
         """Broadcast a transaction to the network. """
         tx = Transaction(tx)
-        return self.network.broadcast_transaction(tx)
+        return self.network.broadcast_transaction_from_non_network_thread(tx)
 
     @command('')
     def createmultisig(self, num, pubkeys):
@@ -832,7 +832,7 @@ def add_global_options(parser):
     group = parser.add_argument_group('global options')
     # const is for when no argument is given to verbosity
     # default is for when the flag is missing
-    group.add_argument("-v", "--verbosity", dest="verbosity", help="Set verbosity filter", default='', const='*', nargs='?')
+    group.add_argument("-v", dest="verbosity", help="Set verbosity filter", default='', const='*', nargs='?')
     group.add_argument("-D", "--dir", dest="electrum_path", help="electrum directory")
     group.add_argument("-P", "--portable", action="store_true", dest="portable", default=False, help="Use local 'electrum_data' directory")
     group.add_argument("-w", "--wallet", dest="wallet_path", help="wallet path")

@@ -236,7 +236,7 @@ class ElectrumGui:
 
             if not self.daemon.get_wallet(wallet.storage.path):
                 # wallet was not in memory
-                wallet.start_threads(self.daemon.network)
+                wallet.start_network(self.daemon.network)
                 self.daemon.add_wallet(wallet)
         try:
             for w in self.windows:
@@ -260,7 +260,8 @@ class ElectrumGui:
         return w
 
     def close_window(self, window):
-        self.windows.remove(window)
+        if window in self.windows:
+           self.windows.remove(window)
         self.build_tray_menu()
         # save wallet path of last open window
         if not self.windows:

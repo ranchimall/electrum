@@ -34,12 +34,16 @@ import hmac
 import stat
 import inspect
 from locale import localeconv
+import asyncio
+import urllib.request, urllib.parse, urllib.error
+import queue
+
+import aiohttp
+from aiohttp_socks import SocksConnector, SocksVer
+from aiorpcx import TaskGroup
 
 from .i18n import _
 
-
-import urllib.request, urllib.parse, urllib.error
-import queue
 
 def inv_dict(d):
     return {v: k for k, v in d.items()}
@@ -49,13 +53,18 @@ base_units = {'FLO':8, 'mFLO':5, 'bits':2, 'sat':0}
 base_units_inverse = inv_dict(base_units)
 base_units_list = ['FLO', 'mFLO', 'bits', 'sat']  # list(dict) does not guarantee order
 
+DECIMAL_POINT_DEFAULT = 5  # mBTC
+
+
+class UnknownBaseUnit(Exception): pass
+
 
 def decimal_point_to_base_unit_name(dp: int) -> str:
     # e.g. 8 -> "BTC"
     try:
         return base_units_inverse[dp]
     except KeyError:
-        raise Exception('Unknown base unit')
+        raise UnknownBaseUnit(dp) from None
 
 
 def base_unit_name_to_decimal_point(unit_name: str) -> int:
@@ -63,11 +72,8 @@ def base_unit_name_to_decimal_point(unit_name: str) -> int:
     try:
         return base_units[unit_name]
     except KeyError:
-        raise Exception('Unknown base unit')
+        raise UnknownBaseUnit(unit_name) from None
 
-
-def normalize_version(v):
-    return [int(x) for x in re.sub(r'(\.0+)*$','', v).split(".")]
 
 class NotEnoughFunds(Exception): pass
 
@@ -898,6 +904,27 @@ def make_dir(path, allow_symlink=True):
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
 
+class AIOSafeSilentException(Exception): pass
+
+
+def aiosafe(f):
+    # save exception in object.
+    # f must be a method of a PrintError instance.
+    # aiosafe calls should not be nested
+    async def f2(*args, **kwargs):
+        self = args[0]
+        try:
+            return await f(*args, **kwargs)
+        except AIOSafeSilentException as e:
+            self.exception = e
+        except asyncio.CancelledError as e:
+            self.exception = e
+        except BaseException as e:
+            self.print_error("Exception in", f.__name__, ":", e.__class__.__name__, str(e))
+            traceback.print_exc(file=sys.stderr)
+            self.exception = e
+    return f2
+
 TxMinedStatus = NamedTuple("TxMinedStatus", [("height", int),
                                              ("conf", int),
                                              ("timestamp", int),
@@ -907,3 +934,26 @@ VerifiedTxInfo = NamedTuple("VerifiedTxInfo", [("height", int),
                                                ("txpos", int),
                                                ("header_hash", str),
                                                ("tx_comment", str)])
+
+def make_aiohttp_session(proxy):
+    if proxy:
+        connector = SocksConnector(
+            socks_ver=SocksVer.SOCKS5 if proxy['mode'] == 'socks5' else SocksVer.SOCKS4,
+            host=proxy['host'],
+            port=int(proxy['port']),
+            username=proxy.get('user', None),
+            password=proxy.get('password', None),
+            rdns=True
+        )
+        return aiohttp.ClientSession(headers={'User-Agent' : 'Electrum'}, timeout=aiohttp.ClientTimeout(total=10), connector=connector)
+    else:
+        return aiohttp.ClientSession(headers={'User-Agent' : 'Electrum'}, timeout=aiohttp.ClientTimeout(total=10))
+
+
+class CustomTaskGroup(TaskGroup):
+
+    def spawn(self, *args, **kwargs):
+        # don't complain if group is already closed.
+        if self._closed:
+            raise asyncio.CancelledError()
+        return super().spawn(*args, **kwargs)

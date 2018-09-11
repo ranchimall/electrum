@@ -22,12 +22,13 @@
 # SOFTWARE.
 
 import threading
+import asyncio
 import itertools
 from collections import defaultdict
 
 from . import bitcoin
 from .bitcoin import COINBASE_MATURITY, TYPE_ADDRESS, TYPE_PUBKEY
-from .util import PrintError, profiler, bfh, VerifiedTxInfo, TxMinedStatus
+from .util import PrintError, profiler, bfh, VerifiedTxInfo, TxMinedStatus, aiosafe, CustomTaskGroup
 from .transaction import Transaction, TxOutput
 from .synchronizer import Synchronizer
 from .verifier import SPV
@@ -58,6 +59,8 @@ class AddressSynchronizer(PrintError):
         # verifier (SPV) and synchronizer are started in start_threads
         self.synchronizer = None
         self.verifier = None
+        self.sync_restart_lock = asyncio.Lock()
+        self.group = None
         # locks: if you need to take multiple ones, acquire them in the order they are defined here!
         self.lock = threading.RLock()
         self.transaction_lock = threading.RLock()
@@ -102,6 +105,7 @@ class AddressSynchronizer(PrintError):
         return h
 
     def get_address_history_len(self, addr: str) -> int:
+        """Return number of transactions where address is involved."""
         return len(self._history_local.get(addr, ()))
 
     def get_txin_address(self, txi):
@@ -133,24 +137,45 @@ class AddressSynchronizer(PrintError):
                 # add it in case it was previously unconfirmed
                 self.add_unverified_tx(tx_hash, tx_height)
 
-    def start_threads(self, network):
+    @aiosafe
+    async def on_default_server_changed(self, event):
+        async with self.sync_restart_lock:
+            self.stop_threads()
+            await self._start_threads()
+
+    def start_network(self, network):
         self.network = network
         if self.network is not None:
-            self.verifier = SPV(self.network, self)
-            self.synchronizer = Synchronizer(self, network)
-            network.add_jobs([self.verifier, self.synchronizer])
-        else:
-            self.verifier = None
-            self.synchronizer = None
+            self.network.register_callback(self.on_default_server_changed, ['default_server_changed'])
+            asyncio.run_coroutine_threadsafe(self._start_threads(), network.asyncio_loop)
+
+    async def _start_threads(self):
+        interface = self.network.interface
+        if interface is None:
+            return  # we should get called again soon
+
+        self.verifier = SPV(self.network, self)
+        self.synchronizer = synchronizer = Synchronizer(self)
+        assert self.group is None, 'group already exists'
+        self.group = CustomTaskGroup()
+
+        async def job():
+            async with self.group as group:
+                await group.spawn(self.verifier.main(group))
+                await group.spawn(self.synchronizer.send_subscriptions(group))
+                await group.spawn(self.synchronizer.handle_status(group))
+                await group.spawn(self.synchronizer.main())
+            # we are being cancelled now
+            interface.session.unsubscribe(synchronizer.status_queue)
+        await interface.group.spawn(job)
 
     def stop_threads(self):
         if self.network:
-            self.network.remove_jobs([self.synchronizer, self.verifier])
-            self.synchronizer.release()
             self.synchronizer = None
             self.verifier = None
-            # Now no references to the synchronizer or verifier
-            # remain so they will be GC-ed
+            if self.group:
+                asyncio.run_coroutine_threadsafe(self.group.cancel_remaining(), self.network.asyncio_loop)
+                self.group = None
             self.storage.put('stored_height', self.get_local_height())
         self.save_transactions()
         self.save_verified_tx()
@@ -319,6 +344,14 @@ class AddressSynchronizer(PrintError):
             self.txi.pop(tx_hash, None)
             self.txo.pop(tx_hash, None)
 
+    def get_depending_transactions(self, tx_hash):
+        """Returns all (grand-)children of tx_hash in this wallet."""
+        children = set()
+        for other_hash in self.spent_outpoints[tx_hash].values():
+            children.add(other_hash)
+            children |= self.get_depending_transactions(other_hash)
+        return children
+
     def receive_tx_callback(self, tx_hash, tx, tx_height):
         self.add_unverified_tx(tx_hash, tx_height)
         self.add_transaction(tx_hash, tx, allow_unrelated=True)
@@ -371,6 +404,8 @@ class AddressSynchronizer(PrintError):
         for prevout_hash, d in _spent_outpoints.items():
             for prevout_n_str, spending_txid in d.items():
                 prevout_n = int(prevout_n_str)
+                if spending_txid not in self.transactions:
+                    continue  # only care about txns we have
                 self.spent_outpoints[prevout_hash][prevout_n] = spending_txid
 
     @profiler
@@ -625,10 +660,6 @@ class AddressSynchronizer(PrintError):
 
     def is_up_to_date(self):
         with self.lock: return self.up_to_date
-
-    def get_num_tx(self, address):
-        """ return number of transactions where address is involved """
-        return len(self.history.get(address, []))
 
     def get_tx_delta(self, tx_hash, address):
         "effect of tx on address"

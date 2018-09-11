@@ -37,7 +37,14 @@ def read_json(filename, default):
     return r
 
 
-class BitcoinMainnet:
+class AbstractNet:
+
+    @classmethod
+    def max_checkpoint(cls) -> int:
+        return max(0, len(cls.CHECKPOINTS) * 2016 - 1)
+
+
+class BitcoinMainnet(AbstractNet):
 
     TESTNET = False
     WIF_PREFIX = 0xa3
@@ -91,7 +98,7 @@ class BitcoinMainnet:
     nAveragingInterval_Version3 = 6
 
 
-class BitcoinTestnet:
+class BitcoinTestnet(AbstractNet):
 
     TESTNET = True
     WIF_PREFIX = 0xef

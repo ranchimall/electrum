@@ -240,7 +240,8 @@ class BaseWizard(object):
                     u = devmgr.unpaired_device_infos(None, plugin, devices=scanned_devices)
                 except BaseException as e:
                     devmgr.print_error('error getting device infos for {}: {}'.format(name, e))
-                    debug_msg += '  {}:\n    {}\n'.format(plugin.name, e)
+                    indented_error_msg = '    '.join([''] + str(e).splitlines(keepends=True))
+                    debug_msg += '  {}:\n{}\n'.format(plugin.name, indented_error_msg)
                     continue
                 devices += list(map(lambda x: (name, x), u))
         if not debug_msg:
@@ -346,6 +347,7 @@ class BaseWizard(object):
         except ScriptTypeNotSupported:
             raise  # this is handled in derivation_dialog
         except BaseException as e:
+            traceback.print_exc(file=sys.stderr)
             self.show_error(e)
             return
         d = {

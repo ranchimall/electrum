@@ -1,5 +1,4 @@
 import base64
-import unittest
 import sys
 
 from electrum.bitcoin import (
@@ -11,7 +10,7 @@ from electrum.bitcoin import (
     deserialize_privkey, serialize_privkey, is_segwit_address,
     is_b58_address, address_to_scripthash, is_minikey, is_compressed, is_xpub,
     xpub_type, is_xprv, is_bip32_derivation, seed_type, EncodeBase58Check,
-    script_num_to_hex, push_script, add_number_to_script, int_to_hex)
+    script_num_to_hex, push_script, add_number_to_script, int_to_hex, convert_bip32_path_to_list_of_uint32)
 from electrum import ecc, crypto, constants
 from electrum.ecc import number_to_string, string_to_number
 from electrum.transaction import opcodes
@@ -48,10 +47,10 @@ def needs_test_with_all_ecc_implementations(func):
             # first test without libsecp
             func(*args, **kwargs)
         finally:
-            # if libsecp is not available, we are done
-            if not ecc_fast._libsecp256k1:
-                return
             ecc_fast.do_monkey_patching_of_python_ecdsa_internals_with_libsecp256k1()
+        # if libsecp is not available, we are done
+        if not ecc_fast._libsecp256k1:
+            return
         # if libsecp is available, test again now
         func(*args, **kwargs)
     return run_test
@@ -74,10 +73,10 @@ def needs_test_with_all_aes_implementations(func):
             # first test without pycryptodomex
             func(*args, **kwargs)
         finally:
-            # if pycryptodomex is not available, we are done
-            if not _aes:
-                return
             crypto.AES = _aes
+        # if pycryptodomex is not available, we are done
+        if not _aes:
+            return
         # if pycryptodomex is available, test again now
         func(*args, **kwargs)
     return run_test
@@ -469,6 +468,11 @@ class Test_xprv_xpub(SequentialTestCase):
         self.assertFalse(is_bip32_derivation("n/"))
         self.assertFalse(is_bip32_derivation(""))
         self.assertFalse(is_bip32_derivation("m/q8462"))
+
+    def test_convert_bip32_path_to_list_of_uint32(self):
+        self.assertEqual([0, 0x80000001, 0x80000001], convert_bip32_path_to_list_of_uint32("m/0/-1/1'"))
+        self.assertEqual([], convert_bip32_path_to_list_of_uint32("m/"))
+        self.assertEqual([2147483692, 2147488889, 221], convert_bip32_path_to_list_of_uint32("m/44'/5241'/221"))
 
     def test_xtype_from_derivation(self):
         self.assertEqual('standard', xtype_from_derivation("m/44'"))
