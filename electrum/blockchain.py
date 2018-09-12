@@ -209,12 +209,12 @@ class Blockchain(util.PrintError):
         for i in range(num):
             target = self.get_target(current_header - 1)
             try:
-                expected_header_hash = self.get_hash(height)
+                expected_header_hash = self.get_hash(current_header)
             except MissingHeader:
                 expected_header_hash = None
             raw_header = data[i*80:(i+1) * 80]
             header = deserialize_header(raw_header, current_header)
-            #print(i)
+            print(i)
             self.verify_header(header, prev_hash, target, expected_header_hash)
             self.save_chunk_part(header)
             prev_hash = hash_header(header)
