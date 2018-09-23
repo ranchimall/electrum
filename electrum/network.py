@@ -32,7 +32,7 @@ import json
 import sys
 import ipaddress
 import asyncio
-from typing import NamedTuple, Optional
+from typing import NamedTuple, Optional, Sequence
 
 import dns
 import dns.resolver
@@ -43,6 +43,7 @@ from .util import PrintError, print_error, aiosafe, bfh
 from .bitcoin import COIN
 from . import constants
 from . import blockchain
+from .blockchain import Blockchain
 from .interface import Interface, serialize_server, deserialize_server
 from .version import PROTOCOL_VERSION
 from .simple_config import SimpleConfig
@@ -61,13 +62,13 @@ def parse_servers(result):
         pruning_level = '-'
         if len(item) > 2:
             for v in item[2]:
-                if re.match("[st]\d*", v):
+                if re.match(r"[st]\d*", v):
                     protocol, port = v[0], v[1:]
                     if port == '': port = constants.net.DEFAULT_PORTS[protocol]
                     out[protocol] = port
                 elif re.match("v(.?)+", v):
                     version = v[1:]
-                elif re.match("p\d*", v):
+                elif re.match(r"p\d*", v):
                     pruning_level = v[1:]
                 if pruning_level == '': pruning_level = '0'
         if out:
@@ -177,7 +178,7 @@ class Network(PrintError):
             config = {}  # Do not use mutables as default values!
         self.config = SimpleConfig(config) if isinstance(config, dict) else config
         self.num_server = 10 if not self.config.get('oneserver') else 0
-        blockchain.blockchains = blockchain.read_blockchains(self.config)  # note: needs self.blockchains_lock
+        blockchain.blockchains = blockchain.read_blockchains(self.config)
         self.print_error("blockchains", list(blockchain.blockchains.keys()))
         self.blockchain_index = config.get('blockchain_index', 0)
         if self.blockchain_index not in blockchain.blockchains.keys():
@@ -198,14 +199,9 @@ class Network(PrintError):
         self.bhi_lock = asyncio.Lock()
         self.interface_lock = threading.RLock()            # <- re-entrant
         self.callback_lock = threading.Lock()
-        self.pending_sends_lock = threading.Lock()
         self.recent_servers_lock = threading.RLock()       # <- re-entrant
-        self.blockchains_lock = threading.Lock()
 
-        self.pending_sends = []
-        self.message_id = 0
-        self.debug = False
-        self.irc_servers = {}  # returned by interface (list from irc)
+        self.server_peers = {}  # returned by interface (servers that the main interface knows about)
         self.recent_servers = self.read_recent_servers()  # note: needs self.recent_servers_lock
 
         self.banner = ''
@@ -217,10 +213,6 @@ class Network(PrintError):
         dir_path = os.path.join(self.config.path, 'certs')
         util.make_dir(dir_path)
 
-        # subscriptions and requests
-        self.h2addr = {}
-        # Requests from client we've not seen a response to
-        self.unanswered_requests = {}
         # retry times
         self.server_retry_time = time.time()
         self.nodes_retry_time = time.time()
@@ -231,11 +223,11 @@ class Network(PrintError):
         self.interfaces = {}               # note: needs self.interface_lock
         self.auto_connect = self.config.get('auto_connect', True)
         self.connecting = set()
-        self.requested_chunks = set()
-        self.socket_queue = queue.Queue()
+        self.server_queue = None
+        self.server_queue_group = None
+        self.asyncio_loop = asyncio.get_event_loop()
         self.start_network(deserialize_server(self.default_server)[2],
                            deserialize_proxy(self.config.get('proxy')))
-        self.asyncio_loop = asyncio.get_event_loop()
 
     @staticmethod
     def get_instance():
@@ -268,11 +260,11 @@ class Network(PrintError):
         with self.callback_lock:
             callbacks = self.callbacks[event][:]
         for callback in callbacks:
+            # FIXME: if callback throws, we will lose the traceback
             if asyncio.iscoroutinefunction(callback):
-                # FIXME: if callback throws, we will lose the traceback
                 asyncio.run_coroutine_threadsafe(callback(event, *args), self.asyncio_loop)
             else:
-                callback(event, *args)
+                self.asyncio_loop.call_soon_threadsafe(callback, event, *args)
 
     def read_recent_servers(self):
         if not self.config.path:
@@ -317,7 +309,8 @@ class Network(PrintError):
         self.notify('status')
 
     def is_connected(self):
-        return self.interface is not None and self.interface.ready.done()
+        interface = self.interface
+        return interface is not None and interface.ready.done()
 
     def is_connecting(self):
         return self.connection_status == 'connecting'
@@ -325,14 +318,29 @@ class Network(PrintError):
     async def request_server_info(self, interface):
         await interface.ready
         session = interface.session
-        self.banner = await session.send_request('server.banner')
-        self.notify('banner')
-        self.donation_address = await session.send_request('server.donation_address')
-        self.irc_servers = parse_servers(await session.send_request('server.peers.subscribe'))
-        self.notify('servers')
-        await self.request_fee_estimates(interface)
-        relayfee = await session.send_request('blockchain.relayfee')
-        self.relay_fee = int(relayfee * COIN) if relayfee is not None else None
+
+        async def get_banner():
+            self.banner = await session.send_request('server.banner')
+            self.notify('banner')
+        async def get_donation_address():
+            self.donation_address = await session.send_request('server.donation_address')
+        async def get_server_peers():
+            self.server_peers = parse_servers(await session.send_request('server.peers.subscribe'))
+            self.notify('servers')
+        async def get_relay_fee():
+            relayfee = await session.send_request('blockchain.relayfee')
+            if relayfee is None:
+                self.relay_fee = None
+            else:
+                relayfee = int(relayfee * COIN)
+                self.relay_fee = max(0, relayfee)
+
+        async with TaskGroup() as group:
+            await group.spawn(get_banner)
+            await group.spawn(get_donation_address)
+            await group.spawn(get_server_peers)
+            await group.spawn(get_relay_fee)
+            await group.spawn(self.request_fee_estimates(interface))
 
     async def request_fee_estimates(self, interface):
         session = interface.session
@@ -343,7 +351,8 @@ class Network(PrintError):
             fee_tasks = []
             for i in FEE_ETA_TARGETS:
                 fee_tasks.append((i, await group.spawn(session.send_request('blockchain.estimatefee', [i]))))
-        self.config.mempool_fees = histogram_task.result()
+        self.config.mempool_fees = histogram = histogram_task.result()
+        self.print_error('fee_histogram', histogram)
         self.notify('fee_histogram')
         for i, task in fee_tasks:
             fee = int(task.result() * COIN)
@@ -360,12 +369,10 @@ class Network(PrintError):
             value = self.config.fee_estimates
         elif key == 'fee_histogram':
             value = self.config.mempool_fees
-        elif key == 'updated':
-            value = (self.get_local_height(), self.get_server_height())
         elif key == 'servers':
             value = self.get_servers()
-        elif key == 'interfaces':
-            value = self.get_interfaces()
+        else:
+            raise Exception('unexpected trigger key {}'.format(key))
         return value
 
     def notify(self, key):
@@ -389,33 +396,36 @@ class Network(PrintError):
 
     @with_recent_servers_lock
     def get_servers(self):
+        # start with hardcoded servers
         out = constants.net.DEFAULT_SERVERS
-        if self.irc_servers:
-            out.update(filter_version(self.irc_servers.copy()))
-        else:
-            for s in self.recent_servers:
-                try:
-                    host, port, protocol = deserialize_server(s)
-                except:
-                    continue
-                if host not in out:
-                    out[host] = {protocol: port}
+        # add recent servers
+        for s in self.recent_servers:
+            try:
+                host, port, protocol = deserialize_server(s)
+            except:
+                continue
+            if host not in out:
+                out[host] = {protocol: port}
+        # add servers received from main interface
+        if self.server_peers:
+            out.update(filter_version(self.server_peers.copy()))
+        # potentially filter out some
         if self.config.get('noonion'):
             out = filter_noonion(out)
         return out
 
     @with_interface_lock
     def start_interface(self, server):
-        if (not server in self.interfaces and not server in self.connecting):
+        if server not in self.interfaces and server not in self.connecting:
             if server == self.default_server:
                 self.print_error("connecting to %s as new interface" % server)
                 self.set_status('connecting')
             self.connecting.add(server)
-            self.socket_queue.put(server)
+            self.server_queue.put(server)
 
     def start_random_interface(self):
         with self.interface_lock:
-            exclude_set = self.disconnected_servers.union(set(self.interfaces))
+            exclude_set = self.disconnected_servers | set(self.interfaces) | self.connecting
         server = pick_random_server(self.get_servers(), self.protocol, exclude_set)
         if server:
             self.start_interface(server)
@@ -471,12 +481,24 @@ class Network(PrintError):
     @with_interface_lock
     def start_network(self, protocol: str, proxy: Optional[dict]):
         assert not self.interface and not self.interfaces
-        assert not self.connecting and self.socket_queue.empty()
+        assert not self.connecting and not self.server_queue
+        assert not self.server_queue_group
         self.print_error('starting network')
         self.disconnected_servers = set([])  # note: needs self.interface_lock
         self.protocol = protocol
+        self._init_server_queue()
         self.set_proxy(proxy)
         self.start_interface(self.default_server)
+        self.trigger_callback('network_updated')
+
+    def _init_server_queue(self):
+        self.server_queue = queue.Queue()
+        self.server_queue_group = server_queue_group = TaskGroup()
+        async def job():
+            forever = asyncio.Event()
+            async with server_queue_group as group:
+                await group.spawn(forever.wait())
+        asyncio.run_coroutine_threadsafe(job(), self.asyncio_loop)
 
     @with_interface_lock
     def stop_network(self):
@@ -488,8 +510,14 @@ class Network(PrintError):
         assert self.interface is None
         assert not self.interfaces
         self.connecting.clear()
+        self._stop_server_queue()
+        self.trigger_callback('network_updated')
+
+    def _stop_server_queue(self):
         # Get a new queue - no old pending connections thanks!
-        self.socket_queue = queue.Queue()
+        self.server_queue = None
+        asyncio.run_coroutine_threadsafe(self.server_queue_group.cancel_remaining(), self.asyncio_loop)
+        self.server_queue_group = None
 
     def set_parameters(self, net_params: NetworkParameters):
         proxy = net_params.proxy
@@ -521,7 +549,6 @@ class Network(PrintError):
             self.switch_to_interface(server_str)
         else:
             self.switch_lagging_interface()
-            self.notify('updated')
 
     def switch_to_random_interface(self):
         '''Switch to a random connected server other than the current one'''
@@ -562,23 +589,25 @@ class Network(PrintError):
         i = self.interfaces[server]
         if self.interface != i:
             self.print_error("switching to", server)
+            blockchain_updated = False
             if self.interface is not None:
+                blockchain_updated = i.blockchain != self.interface.blockchain
                 # Stop any current interface in order to terminate subscriptions,
                 # and to cancel tasks in interface.group.
                 # However, for headers sub, give preference to this interface
                 # over unknown ones, i.e. start it again right away.
                 old_server = self.interface.server
                 self.close_interface(self.interface)
-                if len(self.interfaces) <= self.num_server:
+                if old_server != server and len(self.interfaces) <= self.num_server:
                     self.start_interface(old_server)
 
             self.interface = i
-            asyncio.get_event_loop().create_task(
-                i.group.spawn(self.request_server_info(i)))
+            asyncio.run_coroutine_threadsafe(
+                i.group.spawn(self.request_server_info(i)), self.asyncio_loop)
             self.trigger_callback('default_server_changed')
             self.set_status('connected')
-            self.notify('updated')
-            self.notify('interfaces')
+            self.trigger_callback('network_updated')
+            if blockchain_updated: self.trigger_callback('blockchain_updated')
 
     @with_interface_lock
     def close_interface(self, interface):
@@ -607,17 +636,10 @@ class Network(PrintError):
             self.set_status('disconnected')
         if server in self.interfaces:
             self.close_interface(self.interfaces[server])
-            self.notify('interfaces')
-        with self.blockchains_lock:
-            for b in blockchain.blockchains.values():
-                if b.catch_up == server:
-                    b.catch_up = None
+            self.trigger_callback('network_updated')
 
     @aiosafe
     async def new_interface(self, server):
-        # todo: get tip first, then decide which checkpoint to use.
-        self.add_recent_server(server)
-
         interface = Interface(self, server, self.config.path, self.proxy)
         timeout = 10 if not self.proxy else 20
         try:
@@ -625,20 +647,28 @@ class Network(PrintError):
         except BaseException as e:
             #import traceback
             #traceback.print_exc()
-            self.print_error(interface.server, "couldn't launch because", str(e), str(type(e)))
-            self.connection_down(interface.server)
+            self.print_error(server, "couldn't launch because", str(e), str(type(e)))
+            # note: connection_down will not call interface.close() as
+            # interface is not yet in self.interfaces. OTOH, calling
+            # interface.close() here will sometimes raise deep inside the
+            # asyncio internal select.select... instead, interface will close
+            # itself when it detects the cancellation of interface.ready;
+            # however this might take several seconds...
+            self.connection_down(server)
             return
+        else:
+            with self.interface_lock:
+                self.interfaces[server] = interface
         finally:
-            try: self.connecting.remove(server)
-            except KeyError: pass
-
-        with self.interface_lock:
-            self.interfaces[server] = interface
+            with self.interface_lock:
+                try: self.connecting.remove(server)
+                except KeyError: pass
 
         if server == self.default_server:
             self.switch_to_interface(server)
 
-        self.notify('interfaces')
+        self.add_recent_server(server)
+        self.trigger_callback('network_updated')
 
     def init_headers_file(self):
         b = blockchain.blockchains[0]
@@ -646,9 +676,10 @@ class Network(PrintError):
         length = 80 * len(constants.net.CHECKPOINTS) * 2016
         if not os.path.exists(filename) or os.path.getsize(filename) < length:
             with open(filename, 'wb') as f:
-                if length>0:
+                if length > 0:
                     f.seek(length-1)
                     f.write(b'\x00')
+            util.ensure_sparse_file(filename)
         with b.lock:
             b.update_size()
 
@@ -672,25 +703,8 @@ class Network(PrintError):
             return False, "error: " + out
         return True, out
 
-    async def request_chunk(self, height, tip, session=None, can_return_early=False):
-        if session is None: session = self.interface.session
-        index = height // 2016
-        if can_return_early and index in self.requested_chunks:
-            return
-        size = 2016
-        if tip is not None:
-            size = min(size, tip - index * 2016)
-            size = max(size, 0)
-        try:
-            self.requested_chunks.add(index)
-            res = await session.send_request('blockchain.block.headers', [index * 2016, size])
-        finally:
-            try: self.requested_chunks.remove(index)
-            except KeyError: pass
-        conn = self.blockchain().connect_chunk(index, res['hex'])
-        if not conn:
-            return conn, 0
-        return conn, res['count']
+    async def request_chunk(self, height, tip=None, *, can_return_early=False):
+        return await self.interface.request_chunk(height, tip=tip, can_return_early=can_return_early)
 
     @with_interface_lock
     def blockchain(self):
@@ -700,14 +714,21 @@ class Network(PrintError):
 
     @with_interface_lock
     def get_blockchains(self):
-        out = {}
-        with self.blockchains_lock:
-            blockchain_items = list(blockchain.blockchains.items())
-        for k, b in blockchain_items:
-            r = list(filter(lambda i: i.blockchain==b, list(self.interfaces.values())))
+        out = {}  # blockchain_id -> list(interfaces)
+        with blockchain.blockchains_lock: blockchain_items = list(blockchain.blockchains.items())
+        for chain_id, bc in blockchain_items:
+            r = list(filter(lambda i: i.blockchain==bc, list(self.interfaces.values())))
             if r:
-                out[k] = r
+                out[chain_id] = r
         return out
+
+    @with_interface_lock
+    def disconnect_from_interfaces_on_given_blockchain(self, chain: Blockchain) -> Sequence[Interface]:
+        chain_id = chain.forkpoint
+        ifaces = self.get_blockchains().get(chain_id) or []
+        for interface in ifaces:
+            self.connection_down(interface.server)
+        return ifaces
 
     def follow_chain(self, index):
         bc = blockchain.blockchains.get(index)
@@ -757,9 +778,9 @@ class Network(PrintError):
 
     async def maintain_sessions(self):
         while True:
-            while self.socket_queue.qsize() > 0:
-                server = self.socket_queue.get()
-                asyncio.get_event_loop().create_task(self.new_interface(server))
+            while self.server_queue.qsize() > 0:
+                server = self.server_queue.get()
+                await self.server_queue_group.spawn(self.new_interface(server))
             remove = []
             for k, i in self.interfaces.items():
                 if i.fut.done() and not i.exception:
@@ -799,9 +820,6 @@ class Network(PrintError):
                         self.switch_to_interface(self.default_server)
             else:
                 if self.config.is_fee_estimates_update_required():
-                    await self.interface.group.spawn(self.attempt_fee_estimate_update())
+                    await self.interface.group.spawn(self.request_fee_estimates, self.interface)
 
             await asyncio.sleep(0.1)
-
-    async def attempt_fee_estimate_update(self):
-        await self.request_fee_estimates(self.interface)

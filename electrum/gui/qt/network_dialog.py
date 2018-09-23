@@ -52,7 +52,7 @@ class NetworkDialog(QDialog):
         vbox.addLayout(Buttons(CloseButton(self)))
         self.network_updated_signal_obj.network_updated_signal.connect(
             self.on_update)
-        network.register_callback(self.on_network, ['updated', 'interfaces'])
+        network.register_callback(self.on_network, ['network_updated'])
 
     def on_network(self, event, *args):
         self.network_updated_signal_obj.network_updated_signal.emit(event, args)
@@ -126,6 +126,8 @@ class NodesListWidget(QTreeWidget):
         h.setSectionResizeMode(0, QHeaderView.Stretch)
         h.setSectionResizeMode(1, QHeaderView.ResizeToContents)
 
+        super().update()
+
 
 class ServerListWidget(QTreeWidget):
 
@@ -179,6 +181,8 @@ class ServerListWidget(QTreeWidget):
         h.setStretchLastSection(False)
         h.setSectionResizeMode(0, QHeaderView.Stretch)
         h.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+
+        super().update()
 
 
 class NetworkChoiceLayout(object):
