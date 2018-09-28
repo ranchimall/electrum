@@ -544,7 +544,7 @@ class Abstract_Wallet(AddressSynchronizer):
         return dust_threshold(self.network)
 
     def make_unsigned_transaction(self, inputs, outputs, config, fixed_fee=None,
-                                  change_addr=None, is_sweep=False, txcomment = ""):
+                                  change_addr=None, is_sweep=False, txcomment=None ):
         # check outputs
         i_max = None
         for i, o in enumerate(outputs):
@@ -562,6 +562,9 @@ class Abstract_Wallet(AddressSynchronizer):
 
         if fixed_fee is None and config.fee_per_kb() is None:
             raise NoDynamicFeeEstimates()
+
+        if txcomment is None:
+            txcomment = ''
 
         for item in inputs:
             self.add_input_info(item)
