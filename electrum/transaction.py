@@ -755,6 +755,7 @@ class Transaction:
         self._outputs = outputs
         self.locktime = locktime
         self.txcomment = txcomment
+        self.BIP69_sort()
         return self
 
     @classmethod
@@ -989,10 +990,11 @@ class Transaction:
         for txin in self.inputs():
             txin['sequence'] = nSequence
 
-    def BIP_LI01_sort(self):
-        # See https://github.com/kristovatlas/rfc/blob/master/bips/bip-li01.mediawiki
-        self._inputs.sort(key = lambda i: (i['prevout_hash'], i['prevout_n']))
-        self._outputs.sort(key = lambda o: (o[2], self.pay_script(o[0], o[1])))
+    def BIP69_sort(self, inputs=True, outputs=True):
+        if inputs:
+            self._inputs.sort(key = lambda i: (i['prevout_hash'], i['prevout_n']))
+        if outputs:
+            self._outputs.sort(key = lambda o: (o[2], self.pay_script(o[0], o[1])))
 
     def serialize_output(self, output):
         output_type, addr, amount = output
@@ -1006,7 +1008,8 @@ class Transaction:
         nVersion = int_to_hex(self.version, 4)
         nHashType = int_to_hex(1, 4)
         nLocktime = int_to_hex(self.locktime, 4)
-        nTxComment = var_int(len(self.txcomment)) + str(codecs.encode(bytes(self.txcomment, 'utf-8'), 'hex_codec'), 'utf-8')
+        nTxComment = var_int(len(self.txcomment)) + str(codecs.encode(bytes(self.txcomment, 'utf-8'), 'hex_codec'),
+                                                        'utf-8')
         inputs = self.inputs()
         outputs = self.outputs()
         txin = inputs[i]
@@ -1029,8 +1032,6 @@ class Transaction:
             txouts = var_int(len(outputs)) + ''.join(self.serialize_output(o) for o in outputs)
             if self.version >= 2:
                 preimage = nVersion + txins + txouts + nLocktime + nTxComment + nHashType
-                print("preimage")
-                print(preimage)
             else:
                 preimage = nVersion + txins + txouts + nLocktime + nHashType
         return preimage
@@ -1053,7 +1054,8 @@ class Transaction:
     def serialize_to_network(self, estimate_size=False, witness=True):
         nVersion = int_to_hex(self.version, 4)
         nLocktime = int_to_hex(self.locktime, 4)
-        nTxComment = var_int(len(self.txcomment)) + str(codecs.encode(bytes(self.txcomment, 'utf-8'), 'hex_codec'), 'utf-8')
+        nTxComment = var_int(len(self.txcomment)) + str(codecs.encode(bytes(self.txcomment, 'utf-8'), 'hex_codec'),
+                                                        'utf-8')
         inputs = self.inputs()
         outputs = self.outputs()
         txins = var_int(len(inputs)) + ''.join(self.serialize_input(txin, self.input_script(txin, estimate_size)) for txin in inputs)
@@ -1094,10 +1096,12 @@ class Transaction:
     def add_inputs(self, inputs):
         self._inputs.extend(inputs)
         self.raw = None
+        self.BIP69_sort(outputs=False)
 
     def add_outputs(self, outputs):
         self._outputs.extend(outputs)
         self.raw = None
+        self.BIP69_sort(inputs=False)
 
     def input_value(self):
         return sum(x['value'] for x in self.inputs())

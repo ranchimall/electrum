@@ -1124,7 +1124,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         hbox.addStretch(1)
         grid.addLayout(hbox, 4, 4)
 
-        msg = _('FLO transactions are in general not free. A transaction fee is paid by the sender of the funds.') + '\n\n'\
+        msg = _('Bitcoin transactions are in general not free. A transaction fee is paid by the sender of the funds.') + '\n\n'\
               + _('The amount of fee can be decided freely by the sender. However, transactions with low fees take more time to be processed.') + '\n\n'\
               + _('A suggested fee is automatically added to this field. You may override it. The suggested fee increases with the size of the transaction.')
         self.fee_e_label = HelpLabel(_('Fee'), msg)
@@ -1223,12 +1223,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         if not self.config.get('show_fee', False):
             self.fee_adv_controls.setVisible(False)
 
-        msg = _('This is where you write the FLO Data for the transaction')
-        txcomment_label = HelpLabel(_('FLO Data'), msg)
-        grid.addWidget(txcomment_label, 6, 0)
-        self.message_tx = MyLineEdit()
-        grid.addWidget(self.message_tx, 6, 1, 1, -1)
-
         self.preview_button = EnterButton(_("Preview"), self.do_preview)
         self.preview_button.setToolTip(_('Display the details of your transaction before signing it.'))
         self.send_button = EnterButton(_("Send"), self.do_send)
@@ -1238,7 +1232,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         buttons.addWidget(self.clear_button)
         buttons.addWidget(self.preview_button)
         buttons.addWidget(self.send_button)
-        grid.addLayout(buttons, 7, 1, 1, 3)
+        grid.addLayout(buttons, 6, 1, 1, 3)
 
         self.amount_e.shortcut.connect(self.spend_max)
         self.payto_e.textChanged.connect(self.update_fee)
@@ -1496,7 +1490,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.show_error(_('Payment request has expired'))
             return
         label = self.message_e.text()
-        txcomment = self.message_tx.text()
 
         if self.payment_request:
             outputs = self.payment_request.get_outputs()
@@ -1532,7 +1525,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
         fee_estimator = self.get_send_fee_estimator()
         coins = self.get_coins()
-        return outputs, fee_estimator, label, coins, txcomment
+        return outputs, fee_estimator, label, coins
 
     def do_preview(self):
         self.do_send(preview = True)
@@ -1543,12 +1536,12 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         r = self.read_send_tab()
         if not r:
             return
-        outputs, fee_estimator, tx_desc, coins, txcomment = r
+        outputs, fee_estimator, tx_desc, coins = r
         try:
             is_sweep = bool(self.tx_external_keypairs)
             tx = self.wallet.make_unsigned_transaction(
                 coins, outputs, self.config, fixed_fee=fee_estimator,
-                is_sweep=is_sweep, txcomment=txcomment)
+                is_sweep=is_sweep)
         except NotEnoughFunds:
             self.show_message(_("Insufficient funds"))
             return
@@ -2780,7 +2773,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
         units = base_units_list
         msg = (_('Base unit of your wallet.')
-               + '\n1 FLO = 1000 mFLO. 1 mFLO = 1000 bits. 1 bit = 100 sat.\n'
+               + '\n1 BTC = 1000 mBTC. 1 mBTC = 1000 bits. 1 bit = 100 sat.\n'
                + _('This setting affects the Send tab, and all balance related fields.'))
         unit_label = HelpLabel(_('Base unit') + ':', msg)
         unit_combo = QComboBox()

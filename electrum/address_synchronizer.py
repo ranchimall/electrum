@@ -69,8 +69,8 @@ class AddressSynchronizer(PrintError):
         # Verified transactions.  txid -> VerifiedTxInfo.  Access with self.lock.
         verified_tx = storage.get('verified_tx3', {})
         self.verified_tx = {}
-        for txid, (height, timestamp, txpos, header_hash, tx_comment) in verified_tx.items():
-            self.verified_tx[txid] = VerifiedTxInfo(height, timestamp, txpos, header_hash, tx_comment)
+        for txid, (height, timestamp, txpos, header_hash) in verified_tx.items():
+            self.verified_tx[txid] = VerifiedTxInfo(height, timestamp, txpos, header_hash)
         # Transactions pending verification.  txid -> tx_height. Access with self.lock.
         self.unverified_tx = defaultdict(int)
         # true when synchronized
@@ -639,23 +639,6 @@ class AddressSynchronizer(PrintError):
             else:
                 # local transaction
                 return TxMinedStatus(TX_HEIGHT_LOCAL, 0, None, None)
-
-    def get_tx_comment(self, tx_hash: str):
-        """ Given a transaction, returns txcomment/floData """
-        with self.lock:
-            if tx_hash in self.verified_tx:
-                info = self.verified_tx[tx_hash]
-                tx_comment = info[4]
-                return tx_comment
-            elif tx_hash in self.unverified_tx:
-                tx = self.transactions.get(tx_hash)
-                tx_comment = tx.txcomment[5:]
-                return tx_comment
-            else:
-                # local transaction
-                tx = self.transactions.get(tx_hash)
-                tx_comment = tx.txcomment[5:]
-                return tx_comment
 
     def set_up_to_date(self, up_to_date):
         with self.lock:

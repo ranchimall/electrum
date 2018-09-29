@@ -74,7 +74,7 @@ class HistoryList(MyTreeWidget, AcceptFileDragDrop):
         return str(datetime.date(d.year, d.month, d.day)) if d else _('None')
 
     def refresh_headers(self):
-        headers = ['', '', _('Date'), _('Description'), _('Amount'), _('Balance'), _('FLO Data')]
+        headers = ['', '', _('Date'), _('Description'), _('Amount'), _('Balance')]
         fx = self.parent.fx
         if fx and fx.show_history():
             headers.extend(['%s '%fx.ccy + _('Value')])
@@ -177,13 +177,13 @@ class HistoryList(MyTreeWidget, AcceptFileDragDrop):
         grid = QGridLayout()
         grid.addWidget(QLabel(_("Start")), 0, 0)
         grid.addWidget(QLabel(self.format_date(start_date)), 0, 1)
-        grid.addWidget(QLabel(str(h.get('start_fiat_value')) + '/FLO'), 0, 2)
+        grid.addWidget(QLabel(str(h.get('start_fiat_value')) + '/BTC'), 0, 2)
         grid.addWidget(QLabel(_("Initial balance")), 1, 0)
         grid.addWidget(QLabel(format_amount(h['start_balance'])), 1, 1)
         grid.addWidget(QLabel(str(h.get('start_fiat_balance'))), 1, 2)
         grid.addWidget(QLabel(_("End")), 2, 0)
         grid.addWidget(QLabel(self.format_date(end_date)), 2, 1)
-        grid.addWidget(QLabel(str(h.get('end_fiat_value')) + '/FLO'), 2, 2)
+        grid.addWidget(QLabel(str(h.get('end_fiat_value')) + '/BTC'), 2, 2)
         grid.addWidget(QLabel(_("Final balance")), 4, 0)
         grid.addWidget(QLabel(format_amount(h['end_balance'])), 4, 1)
         grid.addWidget(QLabel(str(h.get('end_fiat_balance'))), 4, 2)
@@ -247,8 +247,7 @@ class HistoryList(MyTreeWidget, AcceptFileDragDrop):
             icon = self.icon_cache.get(":icons/" + TX_ICONS[status])
             v_str = self.parent.format_amount(value, is_diff=True, whitespaces=True)
             balance_str = self.parent.format_amount(balance, whitespaces=True)
-            txcomment = self.wallet.get_tx_comment(tx_hash)
-            entry = ['', tx_hash, status_str, label, v_str, balance_str, txcomment]
+            entry = ['', tx_hash, status_str, label, v_str, balance_str]
             fiat_value = None
             if value is not None and fx and fx.show_history():
                 fiat_value = tx_item['fiat_value'].value

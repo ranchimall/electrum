@@ -1,10 +1,4 @@
 {
-    "ranchimall.duckdns.org": {
-        "pruning": "-",
-        "s": "50002",
-        "t": "50001",
-        "version": "1.2"
-    },
     "localhost": {
         "pruning": "-",
         "s": "50002",

@@ -49,7 +49,6 @@
         "EUR",
         "FJD",
         "FKP",
-        "FLO",
         "GBP",
         "GEL",
         "GHS",
@@ -357,7 +356,7 @@
     "Bitvalor": [
         "BRL"
     ],
-    "Bittrex": [
+    "BlockchainInfo": [
         "AUD",
         "BRL",
         "CAD",
@@ -429,7 +428,6 @@
         "ETB",
         "EUR",
         "FJD",
-        "FLO",
         "FKP",
         "GBP",
         "GEL",

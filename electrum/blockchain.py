@@ -30,24 +30,15 @@ from . import constants
 from .util import bfh, bh2u
 
 
-try:
-    import scrypt
-    getPoWHash = lambda x: scrypt.hash(x, x, N=1024, r=1, p=1, buflen=32)
-except ImportError:
-    util.print_msg("Warning: package scrypt not available; synchronization could be very slow")
-    from .scrypt import scrypt_1024_1_1_80 as getPoWHash
-
 HEADER_SIZE = 80  # bytes
-MAX_TARGET = 0x00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+MAX_TARGET = 0x00000000FFFF0000000000000000000000000000000000000000000000000000
 
 
 class MissingHeader(Exception):
     pass
 
-
 class InvalidHeader(Exception):
     pass
-
 
 def serialize_header(header_dict: dict) -> str:
     s = int_to_hex(header_dict['version'], 4) \
@@ -57,7 +48,6 @@ def serialize_header(header_dict: dict) -> str:
         + int_to_hex(int(header_dict['bits']), 4) \
         + int_to_hex(int(header_dict['nonce']), 4)
     return s
-
 
 def deserialize_header(s: bytes, height: int) -> dict:
     if not s:
@@ -75,17 +65,12 @@ def deserialize_header(s: bytes, height: int) -> dict:
     h['block_height'] = height
     return h
 
-
 def hash_header(header: dict) -> str:
     if header is None:
         return '0' * 64
     if header.get('prev_block_hash') is None:
-        header['prev_block_hash'] = '00' * 32
+        header['prev_block_hash'] = '00'*32
     return hash_encode(Hash(bfh(serialize_header(header))))
-
-
-def pow_hash_header(header):
-    return hash_encode(getPoWHash(bfh(serialize_header(header))))
 
 
 blockchains = {}
@@ -97,7 +82,7 @@ def read_blockchains(config):
     fdir = os.path.join(util.get_headers_dir(config), 'forks')
     util.make_dir(fdir)
     l = filter(lambda x: x.startswith('fork_'), os.listdir(fdir))
-    l = sorted(l, key=lambda x: int(x.split('_')[1]))
+    l = sorted(l, key = lambda x: int(x.split('_')[1]))
     for filename in l:
         forkpoint = int(filename.split('_')[2])
         parent_id = int(filename.split('_')[1])
@@ -136,7 +121,7 @@ class Blockchain(util.PrintError):
 
     def get_max_child(self) -> Optional[int]:
         with blockchains_lock: chains = list(blockchains.values())
-        children = list(filter(lambda y: y.parent_id == self.forkpoint, chains))
+        children = list(filter(lambda y: y.parent_id==self.forkpoint, chains))
         return max([x.forkpoint for x in children]) if children else None
 
     def get_forkpoint(self) -> int:
@@ -173,49 +158,37 @@ class Blockchain(util.PrintError):
 
     def update_size(self) -> None:
         p = self.path()
-        self._size = os.path.getsize(p) // HEADER_SIZE if os.path.exists(p) else 0
+        self._size = os.path.getsize(p)//HEADER_SIZE if os.path.exists(p) else 0
 
     def verify_header(self, header: dict, prev_hash: str, target: int, expected_header_hash: str=None) -> None:
-        _hash = hash_header(header)
-        _powhash = pow_hash_header(header)
+        '''_hash = hash_header(header)
         if expected_header_hash and expected_header_hash != _hash:
             raise Exception("hash mismatches with expected: {} vs {}".format(expected_header_hash, _hash))
         if prev_hash != header.get('prev_block_hash'):
             raise Exception("prev hash mismatch: %s vs %s" % (prev_hash, header.get('prev_block_hash')))
         if constants.net.TESTNET:
             return
-        # print("I'm inside verify_header")
-        # bits = self.target_to_bits(target)
-        bits = target
+        bits = self.target_to_bits(target)
         if bits != header.get('bits'):
             raise Exception("bits mismatch: %s vs %s" % (bits, header.get('bits')))
-        block_hash = int('0x' + _hash, 16)
-        target_val = self.bits_to_target(bits)
-        if int('0x' + _powhash, 16) > target_val:
-            raise Exception("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target_val))
-        # print("I passed verify_header(). Calc target values have been matched")
+        if int('0x' + _hash, 16) > target:
+            raise Exception("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target))'''
 
-
-    def verify_chunk(self, index, data):
+    def verify_chunk(self, index: int, data: bytes) -> None:
         num = len(data) // HEADER_SIZE
-        current_header = (index * 2016)
-        # last = (index * 2016 + 2015)
-        print(index * 2016)
-        prev_hash = self.get_hash(current_header - 1)
+        start_height = index * 2016
+        prev_hash = self.get_hash(start_height - 1)
+        target = self.get_target(index-1)
         for i in range(num):
-            target = self.get_target(current_header - 1)
+            height = start_height + i
             try:
-                expected_header_hash = self.get_hash(current_header)
+                expected_header_hash = self.get_hash(height)
             except MissingHeader:
                 expected_header_hash = None
-
-            raw_header = data[i * HEADER_SIZE: (i + 1) * HEADER_SIZE]
-            header = deserialize_header(raw_header, current_header)
-            print(i)
+            raw_header = data[i*HEADER_SIZE : (i+1)*HEADER_SIZE]
+            header = deserialize_header(raw_header, index*2016 + i)
             self.verify_header(header, prev_hash, target, expected_header_hash)
-            self.save_chunk_part(header)
             prev_hash = hash_header(header)
-            current_header = current_header + 1
 
     def path(self):
         d = util.get_headers_dir(self.config)
@@ -228,24 +201,22 @@ class Blockchain(util.PrintError):
 
     @with_lock
     def save_chunk(self, index: int, chunk: bytes):
-        #chunk_within_checkpoint_region = index < len(self.checkpoints)
-
+        chunk_within_checkpoint_region = index < len(self.checkpoints)
         # chunks in checkpoint region are the responsibility of the 'main chain'
-        # if chunk_within_checkpoint_region and self.parent_id is not None:
-        #    main_chain = blockchains[0]
-        #    main_chain.save_chunk(index, chunk)
-        #    return
+        if chunk_within_checkpoint_region and self.parent_id is not None:
+            main_chain = blockchains[0]
+            main_chain.save_chunk(index, chunk)
+            return
 
-        #delta_height = (index * 2016 - self.forkpoint)
-        #delta_bytes = delta_height * HEADER_SIZE
-
+        delta_height = (index * 2016 - self.forkpoint)
+        delta_bytes = delta_height * HEADER_SIZE
         # if this chunk contains our forkpoint, only save the part after forkpoint
         # (the part before is the responsibility of the parent)
-        # if delta_bytes < 0:
-        #    chunk = chunk[-delta_bytes:]
-        #    delta_bytes = 0
-        # truncate = not chunk_within_checkpoint_region
-        # self.write(chunk, delta_bytes, truncate)
+        if delta_bytes < 0:
+            chunk = chunk[-delta_bytes:]
+            delta_bytes = 0
+        truncate = not chunk_within_checkpoint_region
+        self.write(chunk, delta_bytes, truncate)
         self.swap_with_parent()
 
     @with_lock
@@ -363,58 +334,29 @@ class Blockchain(util.PrintError):
         # compute target from chunk x, used in chunk x+1
         if constants.net.TESTNET:
             return 0
-            # The range is first 90 blocks because FLO's block time was 90 blocks when it started
-        if -1 <= index <= 88:
-            return 0x1e0ffff0
+        if index == -1:
+            return MAX_TARGET
         if index < len(self.checkpoints):
             h, t = self.checkpoints[index]
             return t
         # new target
-        headerLast = self.read_header(index)
-        height = headerLast["block_height"]
-        # check if the height passes is in range for retargeting
-        if (height + 1) % self.DifficultyAdjustmentInterval(height + 1) != 0:
-            return int(headerLast["bits"])
-        averagingInterval = self.AveragingInterval(height + 1)
-        blockstogoback = averagingInterval - 1
-        # print("Blocks to go back = " + str(blockstogoback))
-        if (height + 1) != averagingInterval:
-            blockstogoback = averagingInterval
-        firstHeight = height - blockstogoback
-        headerFirst = self.read_header(int(firstHeight))
-        firstBlockTime = headerFirst["timestamp"]
-        nMinActualTimespan = int(self.MinActualTimespan(int(headerLast["block_height"]) + 1))
-
-        nMaxActualTimespan = int(self.MaxActualTimespan(int(headerLast["block_height"]) + 1))
-        # Limit adjustment step
-        nActualTimespan = headerLast["timestamp"] - firstBlockTime
-        if nActualTimespan < nMinActualTimespan:
-            nActualTimespan = nMinActualTimespan
-        if nActualTimespan > nMaxActualTimespan:
-            nActualTimespan = nMaxActualTimespan
-        # Retarget
-        bnNewBits = int(headerLast["bits"])
-        bnNew = self.bits_to_target(bnNewBits)
-        bnOld = bnNew
-        # FLO: intermediate uint256 can overflow by 1 bit
-        # const arith_uint256 bnPowLimit = UintToArith256(params.powLimit);
-        fShift = bnNew > MAX_TARGET - 1
-
-        if (fShift):
-            bnNew = bnNew >> 1
-        bnNew = bnNew * nActualTimespan
-        bnNew = bnNew / self.TargetTimespan(headerLast["block_height"] + 1)
-        if fShift:
-            bnNew = bnNew << 1
-        if bnNew > MAX_TARGET:
-            bnNew = MAX_TARGET
-        bnNew = self.target_to_bits(int(bnNew))
-        return bnNew
+        first = self.read_header(index * 2016)
+        last = self.read_header(index * 2016 + 2015)
+        if not first or not last:
+            raise MissingHeader()
+        bits = last.get('bits')
+        target = self.bits_to_target(bits)
+        nActualTimespan = last.get('timestamp') - first.get('timestamp')
+        nTargetTimespan = 14 * 24 * 60 * 60
+        nActualTimespan = max(nActualTimespan, nTargetTimespan // 4)
+        nActualTimespan = min(nActualTimespan, nTargetTimespan * 4)
+        new_target = min(MAX_TARGET, (target * nActualTimespan) // nTargetTimespan)
+        return new_target
 
     def bits_to_target(self, bits: int) -> int:
         bitsN = (bits >> 24) & 0xff
-        if not (bitsN >= 0x03 and bitsN <= 0x1e):
-            raise BaseException("First part of bits should be in [0x03, 0x1e]")
+        if not (bitsN >= 0x03 and bitsN <= 0x1d):
+            raise Exception("First part of bits should be in [0x03, 0x1d]")
         bitsBase = bits & 0xffffff
         if not (bitsBase >= 0x8000 and bitsBase <= 0x7fffff):
             raise Exception("Second part of bits should be in [0x8000, 0x7fffff]")
@@ -435,7 +377,7 @@ class Blockchain(util.PrintError):
             return False
         height = header['block_height']
         if check_height and self.height() != height - 1:
-            # self.print_error("cannot connect at height", height)
+            #self.print_error("cannot connect at height", height)
             return False
         if height == 0:
             return hash_header(header) == constants.net.GENESIS
@@ -446,7 +388,7 @@ class Blockchain(util.PrintError):
         if prev_hash != header.get('prev_block_hash'):
             return False
         try:
-            target = self.get_target(height - 1)
+            target = self.get_target(height // 2016 - 1)
         except MissingHeader:
             return False
         try:
@@ -459,7 +401,7 @@ class Blockchain(util.PrintError):
         try:
             data = bfh(hexdata)
             self.verify_chunk(idx, data)
-            # self.print_error("validated chunk %d" % idx)
+            #self.print_error("validated chunk %d" % idx)
             self.save_chunk(idx, data)
             return True
         except BaseException as e:
@@ -475,71 +417,6 @@ class Blockchain(util.PrintError):
             target = self.get_target(index)
             cp.append((h, target))
         return cp
-
-
-    def AveragingInterval(self, height):
-        # V1
-        if height < constants.net.nHeight_Difficulty_Version2:
-            return constants.net.nAveragingInterval_Version1
-        # V2
-        elif height < constants.net.nHeight_Difficulty_Version3:
-            return constants.net.nAveragingInterval_Version2
-        # V3
-        else:
-            return constants.net.nAveragingInterval_Version3
-
-    def MinActualTimespan(self, height):
-        averagingTargetTimespan = self.AveragingInterval(height) * constants.net.nPowTargetSpacing
-        # V1
-        if height < constants.net.nHeight_Difficulty_Version2:
-            return int(averagingTargetTimespan * (100 - constants.net.nMaxAdjustUp_Version1) / 100)
-        # V2
-        elif height < constants.net.nHeight_Difficulty_Version3:
-            return int(averagingTargetTimespan * (100 - constants.net.nMaxAdjustUp_Version2) / 100)
-        # V3
-        else:
-            return int(averagingTargetTimespan * (100 - constants.net.nMaxAdjustUp_Version3) / 100)
-
-    def MaxActualTimespan(self, height):
-        averagingTargetTimespan = self.AveragingInterval(height) * constants.net.nPowTargetSpacing
-        # V1
-        if height < constants.net.nHeight_Difficulty_Version2:
-            return int(averagingTargetTimespan * (100 + constants.net.nMaxAdjustDown_Version1) / 100)
-        # V2
-        elif height < constants.net.nHeight_Difficulty_Version3:
-            return int(averagingTargetTimespan * (100 + constants.net.nMaxAdjustDown_Version2) / 100)
-        # V3
-        else:
-            return int(averagingTargetTimespan * (100 + constants.net.nMaxAdjustDown_Version3) / 100)
-
-    def TargetTimespan(self, height):
-        # V1
-        if height < constants.net.nHeight_Difficulty_Version2:
-            return constants.net.nTargetTimespan_Version1
-        # V2
-        if height < constants.net.nHeight_Difficulty_Version3:
-            return constants.net.nAveragingInterval_Version2 * constants.net.nPowTargetSpacing
-        # V3
-        return constants.net.nAveragingInterval_Version3 * constants.net.nPowTargetSpacing
-
-    def DifficultyAdjustmentInterval(self, height):
-        # V1
-        if height < constants.net.nHeight_Difficulty_Version2:
-            return constants.net.nInterval_Version1
-        # V2
-        if height < constants.net.nHeight_Difficulty_Version3:
-            return constants.net.nInterval_Version2
-        # V3
-        return constants.net.nInterval_Version3
-
-    def save_chunk_part(self, header):
-        filename = self.path()
-        delta = header.get('block_height')
-        data = bfh(serialize_header(header))
-        # assert delta == self.size()
-        assert len(data) == 80
-        self.write(data, delta * 80)
-        # self.swap_with_parent()
 
 
 def check_header(header: dict) -> Optional[Blockchain]:
