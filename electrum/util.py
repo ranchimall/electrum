@@ -867,7 +867,8 @@ TxMinedStatus = NamedTuple("TxMinedStatus", [("height", int),
 VerifiedTxInfo = NamedTuple("VerifiedTxInfo", [("height", int),
                                                ("timestamp", int),
                                                ("txpos", int),
-                                               ("header_hash", str)])
+                                               ("header_hash", str),
+                                               ("flodata", str)])
 
 def make_aiohttp_session(proxy):
     if proxy:

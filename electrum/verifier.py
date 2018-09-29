@@ -113,7 +113,8 @@ class SPV(PrintError):
         except KeyError: pass
         self.print_error("verified %s" % tx_hash)
         header_hash = hash_header(header)
-        vtx_info = VerifiedTxInfo(tx_height, header.get('timestamp'), pos, header_hash)
+        flodata = self.wallet.get_flodata(tx_hash)
+        vtx_info = VerifiedTxInfo(tx_height, header.get('timestamp'), pos, header_hash, flodata)
         self.wallet.add_verified_tx(tx_hash, vtx_info)
         if self.is_up_to_date() and self.wallet.is_up_to_date():
             self.wallet.save_verified_tx(write=True)

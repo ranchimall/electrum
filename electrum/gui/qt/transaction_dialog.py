@@ -113,6 +113,8 @@ class TxDialog(QDialog, MessageBoxMixin):
         vbox.addWidget(self.size_label)
         self.fee_label = QLabel()
         vbox.addWidget(self.fee_label)
+        self.flodata_label = QLabel()
+        vbox.addWidget(self.flodata_label)
 
         self.add_io(vbox)
 
@@ -266,6 +268,7 @@ class TxDialog(QDialog, MessageBoxMixin):
         self.amount_label.setText(amount_str)
         self.fee_label.setText(fee_str)
         self.size_label.setText(size_str)
+        self.flodata_label.setText("FLO data: " + self.tx.flodata)
         run_hook('transaction_dialog_update', self)
 
     def add_io(self, vbox):

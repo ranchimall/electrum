@@ -492,6 +492,11 @@ class Abstract_Wallet(AddressSynchronizer):
             return ', '.join(labels)
         return ''
 
+    def get_flodata(self, tx_hash):
+        tx = self.transactions.get(tx_hash)
+        flodata = tx.flodata[5:]
+        return flodata
+
     def get_tx_status(self, tx_hash, tx_mined_status):
         extra = []
         height = tx_mined_status.height
@@ -539,7 +544,7 @@ class Abstract_Wallet(AddressSynchronizer):
         return dust_threshold(self.network)
 
     def make_unsigned_transaction(self, inputs, outputs, config, fixed_fee=None,
-                                  change_addr=None, is_sweep=False):
+                                  change_addr=None, is_sweep=False, flodata=None):
         # check outputs
         i_max = None
         for i, o in enumerate(outputs):
@@ -560,6 +565,9 @@ class Abstract_Wallet(AddressSynchronizer):
 
         for item in inputs:
             self.add_input_info(item)
+
+        if flodata is None:
+            flodata=''
 
         # change address
         # if we leave it empty, coin_chooser will set it
@@ -609,6 +617,10 @@ class Abstract_Wallet(AddressSynchronizer):
 
         # Timelock tx to current height.
         tx.locktime = self.get_local_height()
+        # Transactions with transaction comments/floData are version 2
+        if flodata != "":
+            tx.version = 2
+            tx.flodata = "text:" + flodata
         run_hook('make_unsigned_transaction', self, tx)
         return tx
 
