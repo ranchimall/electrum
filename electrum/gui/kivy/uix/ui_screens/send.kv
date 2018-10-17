@@ -11,6 +11,7 @@ SendScreen:
     address: ''
     amount: ''
     message: ''
+    flodata: ''
     is_pr: False
     BoxLayout
         padding: '12dp', '12dp', '12dp', '12dp'
@@ -35,6 +36,24 @@ SendScreen:
                     shorten: True
                     on_release: Clock.schedule_once(lambda dt: app.show_info(_('Copy and paste the recipient address using the Paste button, or use the camera to scan a QR code.')))
                     #on_release: Clock.schedule_once(lambda dt: app.popup_dialog('contacts'))
+            CardSeparator:
+                opacity: int(not root.is_pr)
+                color: blue_bottom.foreground_color
+            BoxLayout:
+                id: flodata_selection
+                size_hint: 1, None
+                height: blue_bottom.item_height
+                spacing: '5dp'
+                Image:
+                    source: 'atlas://electrum/gui/kivy/theming/light/pen'
+                    size_hint: None, None
+                    size: '22dp', '22dp'
+                    pos_hint: {'center_y': .5}
+                BlueButton:
+                    id: flodata
+                    text: s.flodata if s.flodata else (_('No FLO data') if root.is_pr else _('FLO data'))
+                    disabled: root.is_pr
+                    on_release: Clock.schedule_once(lambda dt: app.flodata_dialog(s))
             CardSeparator:
                 opacity: int(not root.is_pr)
                 color: blue_bottom.foreground_color

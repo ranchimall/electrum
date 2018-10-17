@@ -184,6 +184,7 @@ class SendScreen(CScreen):
         self.screen.amount = self.app.format_amount_and_units(amount) if amount else ''
         self.payment_request = None
         self.screen.is_pr = False
+        self.screen.flodata = uri.get('flodata', '')
 
     def update(self):
         if self.app.wallet and self.payment_request_queued:
@@ -196,6 +197,7 @@ class SendScreen(CScreen):
         self.screen.address = ''
         self.payment_request = None
         self.screen.is_pr = False
+        self.screen.flodata = ''
 
     def set_request(self, pr):
         self.screen.address = pr.get_requestor()
@@ -260,19 +262,20 @@ class SendScreen(CScreen):
             outputs = [TxOutput(bitcoin.TYPE_ADDRESS, address, amount)]
         message = self.screen.message
         amount = sum(map(lambda x:x[2], outputs))
+        flodata = str(self.screen.flodata)
         if self.app.electrum_config.get('use_rbf'):
             from .dialogs.question import Question
-            d = Question(_('Should this transaction be replaceable?'), lambda b: self._do_send(amount, message, outputs, b))
+            d = Question(_('Should this transaction be replaceable?'), lambda b: self._do_send(amount, message, outputs, b, flodata))
             d.open()
         else:
-            self._do_send(amount, message, outputs, False)
+            self._do_send(amount, message, outputs, False, flodata)
 
-    def _do_send(self, amount, message, outputs, rbf):
+    def _do_send(self, amount, message, outputs, rbf, flodata):
         # make unsigned transaction
         config = self.app.electrum_config
         coins = self.app.wallet.get_spendable_coins(None, config)
         try:
-            tx = self.app.wallet.make_unsigned_transaction(coins, outputs, config, None)
+            tx = self.app.wallet.make_unsigned_transaction(coins, outputs, config, None, flodata=flodata)
         except NotEnoughFunds:
             self.app.show_error(_("Not enough funds"))
             return
