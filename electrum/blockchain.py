@@ -29,6 +29,13 @@ from .bitcoin import Hash, hash_encode, int_to_hex, rev_hex
 from . import constants
 from .util import bfh, bh2u
 
+try:
+    import scrypt
+    getPoWHash = lambda x: scrypt.hash(x, x, N=1024, r=1, p=1, buflen=32)
+except ImportError:
+    util.print_msg("Warning: package scrypt not available; synchronization could be very slow")
+    from .scrypt import scrypt_1024_1_1_80 as getPoWHash
+
 
 HEADER_SIZE = 80  # bytes
 MAX_TARGET = 0x00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
@@ -71,6 +78,9 @@ def hash_header(header: dict) -> str:
     if header.get('prev_block_hash') is None:
         header['prev_block_hash'] = '00'*32
     return hash_encode(Hash(bfh(serialize_header(header))))
+
+def pow_hash_header(header):
+    return hash_encode(getPoWHash(bfh(serialize_header(header))))
 
 
 blockchains = {}
@@ -161,41 +171,71 @@ class Blockchain(util.PrintError):
         self._size = os.path.getsize(p)//HEADER_SIZE if os.path.exists(p) else 0
 
     def verify_header(self, header: dict, prev_hash: str, target: int, expected_header_hash: str=None) -> None:
-        '''_hash = hash_header(header)
+        _hash = hash_header(header)
+        _powhash = pow_hash_header(header)
         if expected_header_hash and expected_header_hash != _hash:
             raise Exception("hash mismatches with expected: {} vs {}".format(expected_header_hash, _hash))
         if prev_hash != header.get('prev_block_hash'):
             raise Exception("prev hash mismatch: %s vs %s" % (prev_hash, header.get('prev_block_hash')))
         if constants.net.TESTNET:
             return
-        bits = self.target_to_bits(target)
+        #bits = self.target_to_bits(target)
+        bits = target
         if bits != header.get('bits'):
             raise Exception("bits mismatch: %s vs %s" % (bits, header.get('bits')))
-        if int('0x' + _hash, 16) > target:
-            raise Exception("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target))'''
+        block_hash = int('0x' + _hash, 16)
+        target_val = self.bits_to_target(bits)
+        if int('0x' + _powhash, 16) > target_val:
+            raise Exception("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target_val))
 
     def verify_chunk(self, index: int, data: bytes) -> None:
         num = len(data) // HEADER_SIZE
-        current_header = start_height = index * 2016
-        prev_hash = self.get_hash(start_height - 1)
+        current_header = index * 2016
+        prev_hash = self.get_hash(current_header - 1)
         headerLast = None
         headerFirst = None
+        capture = None
+        lst = []
         for i in range(num):
-            target = self.get_target(current_header - 1, headerLast, headerFirst)
-            height = start_height + i
-            try:
-                expected_header_hash = self.get_hash(height)
-            except MissingHeader:
-                expected_header_hash = None
-            raw_header = data[i*HEADER_SIZE : (i+1)*HEADER_SIZE]
-            header = deserialize_header(raw_header, current_header)
-            self.verify_header(header, prev_hash, target, expected_header_hash)
-            prev_hash = hash_header(header)
-            headerLast = header
-            difficulty_interval = self.DifficultyAdjustmentInterval(height)
-            if height % difficulty_interval == 0:
-                headerFirst = header
-            current_header = current_header + 1
+            averaging_interval = self.AveragingInterval(current_header)
+            difficulty_interval = self.DifficultyAdjustmentInterval(current_header)
+            if current_header < 426000:
+                target = self.get_target(current_header - 1, headerLast, headerFirst)
+                try:
+                    expected_header_hash = self.get_hash(current_header)
+                except MissingHeader:
+                    expected_header_hash = None
+                raw_header = data[i*HEADER_SIZE : (i+1)*HEADER_SIZE]
+                header = deserialize_header(raw_header, current_header)
+                self.verify_header(header, prev_hash, target, expected_header_hash)
+                prev_hash = hash_header(header)
+                headerLast = header
+                if current_header == 0:
+                    headerFirst = header
+                elif (current_header + averaging_interval + 1) % difficulty_interval  == 0:
+                    capture = header
+                if current_header != 0 and current_header % difficulty_interval == 0:
+                    headerFirst = capture
+                if current_header >= 425993:
+                    lst.append(headerLast)
+                current_header = current_header + 1
+            else:
+                if len(lst)>6:
+                    headerFirst = lst[0]
+                target = self.get_target(current_header - 1, headerLast, headerFirst)
+                try:
+                    expected_header_hash = self.get_hash(current_header)
+                except MissingHeader:
+                    expected_header_hash = None
+                raw_header = data[i * HEADER_SIZE: (i + 1) * HEADER_SIZE]
+                header = deserialize_header(raw_header, current_header)
+                self.verify_header(header, prev_hash, target, expected_header_hash)
+                prev_hash = hash_header(header)
+                headerLast = header
+                lst.append(header)
+                if len(lst)>7:
+                    lst.pop(0)
+                current_header = current_header + 1
 
     def path(self):
         d = util.get_headers_dir(self.config)
@@ -427,7 +467,7 @@ class Blockchain(util.PrintError):
         if prev_hash != header.get('prev_block_hash'):
             return False
         try:
-            target = self.get_target(height // 2016 - 1)
+            target = self.get_target(height - 1)
         except MissingHeader:
             return False
         try:
