@@ -492,11 +492,6 @@ class Abstract_Wallet(AddressSynchronizer):
             return ', '.join(labels)
         return ''
 
-    def get_flodata(self, tx_hash):
-        tx = self.transactions.get(tx_hash)
-        flodata = tx.flodata[5:]
-        return flodata
-
     def get_tx_status(self, tx_hash, tx_mined_status):
         extra = []
         height = tx_mined_status.height
