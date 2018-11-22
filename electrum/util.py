@@ -51,11 +51,11 @@ def inv_dict(d):
     return {v: k for k, v in d.items()}
 
 
-base_units = {'BTC':8, 'mBTC':5, 'bits':2, 'sat':0}
+base_units = {'FLO':8, 'mFLO':5, 'bits':2, 'sat':0}
 base_units_inverse = inv_dict(base_units)
-base_units_list = ['BTC', 'mBTC', 'bits', 'sat']  # list(dict) does not guarantee order
+base_units_list = ['FLO', 'mFLO', 'bits', 'sat']  # list(dict) does not guarantee order
 
-DECIMAL_POINT_DEFAULT = 5  # mBTC
+DECIMAL_POINT_DEFAULT = 5  # mFLO
 
 
 class UnknownBaseUnit(Exception): pass
@@ -140,7 +140,7 @@ class Satoshis(object):
         return 'Satoshis(%d)'%self.value
 
     def __str__(self):
-        return format_satoshis(self.value) + " BTC"
+        return format_satoshis(self.value) + " FLO"
 
 class Fiat(object):
     __slots__ = ('value', 'ccy')
@@ -674,12 +674,12 @@ def parse_URI(uri, on_pr=None):
 
     if ':' not in uri:
         if not bitcoin.is_address(uri):
-            raise Exception("Not a bitcoin address")
+            raise Exception("Not a FLO address")
         return {'address': uri}
 
     u = urllib.parse.urlparse(uri)
     if u.scheme != 'bitcoin':
-        raise Exception("Not a bitcoin URI")
+        raise Exception("Not a FLO URI")
     address = u.path
 
     # python for android fails to parse query
@@ -696,7 +696,7 @@ def parse_URI(uri, on_pr=None):
     out = {k: v[0] for k, v in pq.items()}
     if address:
         if not bitcoin.is_address(address):
-            raise Exception("Invalid bitcoin address:" + address)
+            raise Exception("Invalid FLO address:" + address)
         out['address'] = address
     if 'amount' in out:
         am = out['amount']

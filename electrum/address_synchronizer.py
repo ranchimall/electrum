@@ -791,7 +791,7 @@ class AddressSynchronizer(PrintError):
 
     @with_local_height_cached
     def get_addr_balance(self, address):
-        """Return the balance of a bitcoin address:
+        """Return the balance of a FLO address:
         confirmed and matured, unconfirmed, unmatured
         """
         received, sent = self.get_addr_io(address)
