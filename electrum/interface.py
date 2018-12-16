@@ -28,13 +28,14 @@ import ssl
 import sys
 import traceback
 import asyncio
-from typing import Tuple, Union
+from typing import Tuple, Union, List, TYPE_CHECKING, Optional
 from collections import defaultdict
 
 import aiorpcx
-from aiorpcx import ClientSession, Notification
+from aiorpcx import RPCSession, Notification
+import certifi
 
-from .util import PrintError, aiosafe, bfh, AIOSafeSilentException, SilentTaskGroup
+from .util import PrintError, ignore_exceptions, log_exceptions, bfh, SilentTaskGroup
 from . import util
 from . import x509
 from . import pem
@@ -42,9 +43,16 @@ from .version import ELECTRUM_VERSION, PROTOCOL_VERSION
 from . import blockchain
 from .blockchain import Blockchain
 from . import constants
+from .i18n import _
+
+if TYPE_CHECKING:
+    from .network import Network
 
 
-class NotificationSession(ClientSession):
+ca_path = certifi.where()
+
+
+class NotificationSession(RPCSession):
 
     def __init__(self, *args, **kwargs):
         super(NotificationSession, self).__init__(*args, **kwargs)
@@ -57,7 +65,7 @@ class NotificationSession(ClientSession):
         # will catch the exception, count errors, and at some point disconnect
         if isinstance(request, Notification):
             params, result = request.args[:-1], request.args[-1]
-            key = self.get_index(request.method, params)
+            key = self.get_hashable_key_for_rpc_call(request.method, params)
             if key in self.subscriptions:
                 self.cache[key] = result
                 for queue in self.subscriptions[key]:
@@ -65,10 +73,10 @@ class NotificationSession(ClientSession):
             else:
                 raise Exception('unexpected request: {}'.format(repr(request)))
 
-    async def send_request(self, *args, timeout=-1, **kwargs):
+    async def send_request(self, *args, timeout=None, **kwargs):
         # note: the timeout starts after the request touches the wire!
-        if timeout == -1:
-            timeout = 20 if not self.proxy else 30
+        if timeout is None:
+            timeout = 30
         # note: the semaphore implementation guarantees no starvation
         async with self.in_flight_requests_semaphore:
             try:
@@ -78,10 +86,10 @@ class NotificationSession(ClientSession):
             except asyncio.TimeoutError as e:
                 raise RequestTimedOut('request timed out: {}'.format(args)) from e
 
-    async def subscribe(self, method, params, queue):
+    async def subscribe(self, method: str, params: List, queue: asyncio.Queue):
         # note: until the cache is written for the first time,
         # each 'subscribe' call might make a request on the network.
-        key = self.get_index(method, params)
+        key = self.get_hashable_key_for_rpc_call(method, params)
         self.subscriptions[key].append(queue)
         if key in self.cache:
             result = self.cache[key]
@@ -99,13 +107,19 @@ class NotificationSession(ClientSession):
                 v.remove(queue)
 
     @classmethod
-    def get_index(cls, method, params):
+    def get_hashable_key_for_rpc_call(cls, method, params):
         """Hashable index for subscriptions and cache"""
         return str(method) + repr(params)
 
 
 class GracefulDisconnect(Exception): pass
-class RequestTimedOut(GracefulDisconnect): pass
+
+
+class RequestTimedOut(GracefulDisconnect):
+    def __str__(self):
+        return _("Network request timed out.")
+
+
 class ErrorParsingSSLCert(Exception): pass
 class ErrorGettingSSLCertFromServer(Exception): pass
 
@@ -128,27 +142,25 @@ def serialize_server(host: str, port: Union[str, int], protocol: str) -> str:
 
 
 class Interface(PrintError):
+    verbosity_filter = 'i'
 
-    def __init__(self, network, server, config_path, proxy):
+    def __init__(self, network: 'Network', server: str, proxy: Optional[dict]):
         self.ready = asyncio.Future()
         self.got_disconnected = asyncio.Future()
         self.server = server
         self.host, self.port, self.protocol = deserialize_server(self.server)
         self.port = int(self.port)
-        self.config_path = config_path
-        self.cert_path = os.path.join(self.config_path, 'certs', self.host)
+        assert network.config.path
+        self.cert_path = os.path.join(network.config.path, 'certs', self.host)
         self.blockchain = None
         self._requested_chunks = set()
         self.network = network
         self._set_proxy(proxy)
-        self.session = None
+        self.session = None  # type: NotificationSession
 
         self.tip_header = None
         self.tip = 0
 
-        # note that an interface dying MUST NOT kill the whole network,
-        # hence exceptions raised by "run" need to be caught not to kill
-        # main_taskgroup! the aiosafe decorator does this.
         asyncio.run_coroutine_threadsafe(
             self.network.main_taskgroup.spawn(self.run()), self.network.asyncio_loop)
         self.group = SilentTaskGroup()
@@ -224,7 +236,7 @@ class Interface(PrintError):
             return None
 
         # see if we already have cert for this server; or get it for the first time
-        ca_sslc = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+        ca_sslc = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH, cafile=ca_path)
         if not self._is_saved_ssl_cert_available():
             await self._try_saving_ssl_cert_for_first_time(ca_sslc)
         # now we have a file saved in our certificate store
@@ -239,17 +251,18 @@ class Interface(PrintError):
         return sslc
 
     def handle_disconnect(func):
-        async def wrapper_func(self, *args, **kwargs):
+        async def wrapper_func(self: 'Interface', *args, **kwargs):
             try:
                 return await func(self, *args, **kwargs)
             except GracefulDisconnect as e:
                 self.print_error("disconnecting gracefully. {}".format(e))
             finally:
-                await self.network.connection_down(self.server)
+                await self.network.connection_down(self)
                 self.got_disconnected.set_result(1)
         return wrapper_func
 
-    @aiosafe
+    @ignore_exceptions  # do not kill main_taskgroup
+    @log_exceptions
     @handle_disconnect
     async def run(self):
         try:
@@ -272,7 +285,7 @@ class Interface(PrintError):
         assert self.tip_header
         chain = blockchain.check_header(self.tip_header)
         if not chain:
-            self.blockchain = blockchain.blockchains[0]
+            self.blockchain = blockchain.get_best_chain()
         else:
             self.blockchain = chain
         assert self.blockchain is not None
@@ -306,7 +319,9 @@ class Interface(PrintError):
     async def get_certificate(self):
         sslc = ssl.SSLContext()
         try:
-            async with aiorpcx.ClientSession(self.host, self.port, ssl=sslc, proxy=self.proxy) as session:
+            async with aiorpcx.Connector(RPCSession,
+                                         host=self.host, port=self.port,
+                                         ssl=sslc, proxy=self.proxy) as session:
                 return session.transport._ssl_protocol._sslpipe._sslobj.getpeercert(True)
         except ValueError:
             return None
@@ -339,8 +354,10 @@ class Interface(PrintError):
         return conn, res['count']
 
     async def open_session(self, sslc, exit_early=False):
-        self.session = NotificationSession(self.host, self.port, ssl=sslc, proxy=self.proxy)
-        async with self.session as session:
+        async with aiorpcx.Connector(NotificationSession,
+                                     host=self.host, port=self.port,
+                                     ssl=sslc, proxy=self.proxy) as session:
+            self.session = session  # type: NotificationSession
             try:
                 ver = await session.send_request('server.version', [ELECTRUM_VERSION, PROTOCOL_VERSION])
             except aiorpcx.jsonrpc.RPCError as e:
@@ -367,7 +384,9 @@ class Interface(PrintError):
             await self.session.send_request('server.ping')
 
     async def close(self):
-        await self.group.cancel_remaining()
+        if self.session:
+            await self.session.close()
+        # monitor_connection will cancel tasks
 
     async def run_fetch_blocks(self):
         header_queue = asyncio.Queue()
@@ -384,6 +403,7 @@ class Interface(PrintError):
             self.mark_ready()
             await self._process_header_at_tip()
             self.network.trigger_callback('network_updated')
+            await self.network.switch_unwanted_fork_interface()
             await self.network.switch_lagging_interface()
 
     async def _process_header_at_tip(self):
@@ -422,14 +442,17 @@ class Interface(PrintError):
         return last, height
 
     async def step(self, height, header=None):
-        assert height != 0
-        assert height <= self.tip, (height, self.tip)
+        assert 0 <= height <= self.tip, (height, self.tip)
         if header is None:
             header = await self.get_block_header(height, 'catchup')
 
         chain = blockchain.check_header(header) if 'mock' not in header else header['mock']['check'](header)
         if chain:
             self.blockchain = chain if isinstance(chain, Blockchain) else self.blockchain
+            # note: there is an edge case here that is not handled.
+            # we might know the blockhash (enough for check_header) but
+            # not have the header itself. e.g. regtest chain with only genesis.
+            # this situation resolves itself on the next block
             return 'catchup', height+1
 
         can_connect = blockchain.can_connect(header) if 'mock' not in header else header['mock']['connect'](height)
@@ -488,7 +511,7 @@ class Interface(PrintError):
         # bad_header connects to good_header; bad_header itself is NOT in self.blockchain.
 
         bh = self.blockchain.height()
-        assert bh >= good
+        assert bh >= good, (bh, good)
         if bh == good:
             height = good + 1
             self.print_error("catching up from {}".format(height))
@@ -496,53 +519,12 @@ class Interface(PrintError):
 
         # this is a new fork we don't yet have
         height = bad + 1
-        branch = blockchain.blockchains.get(bad)
-        if branch is not None:
-            # Conflict!! As our fork handling is not completely general,
-            # we need to delete another fork to save this one.
-            # Note: This could be a potential DOS vector against Electrum.
-            # However, mining blocks that satisfy the difficulty requirements
-            # is assumed to be expensive; especially as forks below the max
-            # checkpoint are ignored.
-            self.print_error("new fork at bad height {}. conflict!!".format(bad))
-            assert self.blockchain != branch
-            ismocking = type(branch) is dict
-            if ismocking:
-                self.print_error("TODO replace blockchain")
-                return 'fork_conflict', height
-            self.print_error('forkpoint conflicts with existing fork', branch.path())
-            self._raise_if_fork_conflicts_with_default_server(branch)
-            await self._disconnect_from_interfaces_on_conflicting_blockchain(branch)
-            branch.write(b'', 0)
-            branch.save_header(bad_header)
-            self.blockchain = branch
-            return 'fork_conflict', height
-        else:
-            # No conflict. Just save the new fork.
-            self.print_error("new fork at bad height {}. NO conflict.".format(bad))
-            forkfun = self.blockchain.fork if 'mock' not in bad_header else bad_header['mock']['fork']
-            b = forkfun(bad_header)
-            with blockchain.blockchains_lock:
-                assert bad not in blockchain.blockchains, (bad, list(blockchain.blockchains))
-                blockchain.blockchains[bad] = b
-            self.blockchain = b
-            assert b.forkpoint == bad
-            return 'fork_noconflict', height
-
-    def _raise_if_fork_conflicts_with_default_server(self, chain_to_delete: Blockchain) -> None:
-        main_interface = self.network.interface
-        if not main_interface: return
-        if main_interface == self: return
-        chain_of_default_server = main_interface.blockchain
-        if not chain_of_default_server: return
-        if chain_to_delete == chain_of_default_server:
-            raise GracefulDisconnect('refusing to overwrite blockchain of default server')
-
-    async def _disconnect_from_interfaces_on_conflicting_blockchain(self, chain: Blockchain) -> None:
-        ifaces = await self.network.disconnect_from_interfaces_on_given_blockchain(chain)
-        if not ifaces: return
-        servers = [interface.server for interface in ifaces]
-        self.print_error("forcing disconnect of other interfaces: {}".format(servers))
+        self.print_error(f"new fork at bad height {bad}")
+        forkfun = self.blockchain.fork if 'mock' not in bad_header else bad_header['mock']['fork']
+        b = forkfun(bad_header)  # type: Blockchain
+        self.blockchain = b
+        assert b.forkpoint == bad
+        return 'fork', height
 
     async def _search_headers_backwards(self, height, header):
         async def iterate():
