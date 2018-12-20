@@ -25,15 +25,21 @@ import threading
 import asyncio
 import itertools
 from collections import defaultdict
+from typing import TYPE_CHECKING, Dict, Optional
 
 from . import bitcoin
 from .bitcoin import COINBASE_MATURITY, TYPE_ADDRESS, TYPE_PUBKEY
-from .util import PrintError, profiler, bfh, VerifiedTxInfo, TxMinedStatus, aiosafe, SilentTaskGroup
+from .util import PrintError, profiler, bfh, TxMinedInfo
 from .transaction import Transaction, TxOutput
 from .synchronizer import Synchronizer
 from .verifier import SPV
 from .blockchain import hash_header
 from .i18n import _
+
+if TYPE_CHECKING:
+    from .storage import WalletStorage
+    from .network import Network
+
 
 TX_HEIGHT_LOCAL = -2
 TX_HEIGHT_UNCONF_PARENT = -1
@@ -53,24 +59,27 @@ class AddressSynchronizer(PrintError):
     inherited by wallet
     """
 
-    def __init__(self, storage):
+    def __init__(self, storage: 'WalletStorage'):
         self.storage = storage
-        self.network = None
-        # verifier (SPV) and synchronizer are started in start_threads
-        self.synchronizer = None
-        self.verifier = None
-        self.sync_restart_lock = asyncio.Lock()
-        self.group = None
+        self.network = None  # type: Network
+        # verifier (SPV) and synchronizer are started in start_network
+        self.synchronizer = None  # type: Synchronizer
+        self.verifier = None  # type: SPV
         # locks: if you need to take multiple ones, acquire them in the order they are defined here!
         self.lock = threading.RLock()
         self.transaction_lock = threading.RLock()
         # address -> list(txid, height)
         self.history = storage.get('addr_history',{})
-        # Verified transactions.  txid -> VerifiedTxInfo.  Access with self.lock.
+        # Verified transactions.  txid -> TxMinedInfo.  Access with self.lock.
         verified_tx = storage.get('verified_tx3', {})
-        self.verified_tx = {}
+        self.verified_tx = {}  # type: Dict[str, TxMinedInfo]
         for txid, (height, timestamp, txpos, header_hash, flodata) in verified_tx.items():
-            self.verified_tx[txid] = VerifiedTxInfo(height, timestamp, txpos, header_hash, flodata)
+            self.verified_tx[txid] = TxMinedInfo(height=height,
+                                                 conf=None,
+                                                 timestamp=timestamp,
+                                                 txpos=txpos,
+                                                 header_hash=header_hash,
+                                                 flodata=flodata)
         # Transactions pending verification.  txid -> tx_height. Access with self.lock.
         self.unverified_tx = defaultdict(int)
         # true when synchronized
@@ -143,45 +152,20 @@ class AddressSynchronizer(PrintError):
                 # add it in case it was previously unconfirmed
                 self.add_unverified_tx(tx_hash, tx_height)
 
-    @aiosafe
-    async def on_default_server_changed(self, event):
-        async with self.sync_restart_lock:
-            self.stop_threads(write_to_disk=False)
-            await self._start_threads()
-
     def start_network(self, network):
         self.network = network
         if self.network is not None:
-            self.network.register_callback(self.on_default_server_changed, ['default_server_changed'])
-            asyncio.run_coroutine_threadsafe(self._start_threads(), network.asyncio_loop)
-
-    async def _start_threads(self):
-        interface = self.network.interface
-        if interface is None:
-            return  # we should get called again soon
-
-        self.verifier = SPV(self.network, self)
-        self.synchronizer = synchronizer = Synchronizer(self)
-        assert self.group is None, 'group already exists'
-        self.group = SilentTaskGroup()
-
-        async def job():
-            async with self.group as group:
-                await group.spawn(self.verifier.main(group))
-                await group.spawn(self.synchronizer.send_subscriptions(group))
-                await group.spawn(self.synchronizer.handle_status(group))
-                await group.spawn(self.synchronizer.main())
-            # we are being cancelled now
-            interface.session.unsubscribe(synchronizer.status_queue)
-        await interface.group.spawn(job)
+            self.synchronizer = Synchronizer(self)
+            self.verifier = SPV(self.network, self)
 
     def stop_threads(self, write_to_disk=True):
         if self.network:
-            self.synchronizer = None
-            self.verifier = None
-            if self.group:
-                asyncio.run_coroutine_threadsafe(self.group.cancel_remaining(), self.network.asyncio_loop)
-                self.group = None
+            if self.synchronizer:
+                asyncio.run_coroutine_threadsafe(self.synchronizer.stop(), self.network.asyncio_loop)
+                self.synchronizer = None
+            if self.verifier:
+                asyncio.run_coroutine_threadsafe(self.verifier.stop(), self.network.asyncio_loop)
+                self.verifier = None
             self.storage.put('stored_height', self.get_local_height())
         if write_to_disk:
             self.save_transactions()
@@ -465,7 +449,11 @@ class AddressSynchronizer(PrintError):
 
     def save_verified_tx(self, write=False):
         with self.lock:
-            self.storage.put('verified_tx3', self.verified_tx)
+            verified_tx_to_save = {}
+            for txid, tx_info in self.verified_tx.items():
+                verified_tx_to_save[txid] = (tx_info.height, tx_info.timestamp,
+                                             tx_info.txpos, tx_info.header_hash)
+            self.storage.put('verified_tx3', verified_tx_to_save)
             if write:
                 self.storage.write()
 
@@ -478,7 +466,7 @@ class AddressSynchronizer(PrintError):
                 self.spent_outpoints = defaultdict(dict)
                 self.history = {}
                 self.verified_tx = {}
-                self.transactions = {}
+                self.transactions = {}  # type: Dict[str, Transaction]
                 self.save_transactions()
 
     def get_txpos(self, tx_hash):
@@ -583,7 +571,7 @@ class AddressSynchronizer(PrintError):
             if new_height == tx_height:
                 self.unverified_tx.pop(tx_hash, None)
 
-    def add_verified_tx(self, tx_hash: str, info: VerifiedTxInfo):
+    def add_verified_tx(self, tx_hash: str, info: TxMinedInfo):
         # Remove from the unverified map and add to the verified map
         with self.lock:
             self.unverified_tx.pop(tx_hash, None)
@@ -626,19 +614,18 @@ class AddressSynchronizer(PrintError):
             return cached_local_height
         return self.network.get_local_height() if self.network else self.storage.get('stored_height', 0)
 
-    def get_tx_height(self, tx_hash: str) -> TxMinedStatus:
-        """ Given a transaction, returns (height, conf, timestamp, header_hash) """
+    def get_tx_height(self, tx_hash: str) -> TxMinedInfo:
         with self.lock:
             if tx_hash in self.verified_tx:
                 info = self.verified_tx[tx_hash]
                 conf = max(self.get_local_height() - info.height + 1, 0)
-                return TxMinedStatus(info.height, conf, info.timestamp, info.header_hash)
+                return info._replace(conf=conf)
             elif tx_hash in self.unverified_tx:
                 height = self.unverified_tx[tx_hash]
-                return TxMinedStatus(height, 0, None, None)
+                return TxMinedInfo(height=height, conf=0)
             else:
                 # local transaction
-                return TxMinedStatus(TX_HEIGHT_LOCAL, 0, None, None)
+                return TxMinedInfo(height=TX_HEIGHT_LOCAL, conf=0)
 
     def get_flodata(self, tx_hash: str):
         """ Given a transaction, returns flodata """
@@ -698,7 +685,7 @@ class AddressSynchronizer(PrintError):
                 delta += v
         return delta
 
-    def get_wallet_delta(self, tx):
+    def get_wallet_delta(self, tx: Transaction):
         """ effect of tx on wallet """
         is_relevant = False  # "related to wallet?"
         is_mine = False
@@ -725,10 +712,10 @@ class AddressSynchronizer(PrintError):
                 is_partial = True
         if not is_mine:
             is_partial = False
-        for addr, value in tx.get_outputs():
-            v_out += value
-            if self.is_mine(addr):
-                v_out_mine += value
+        for o in tx.outputs():
+            v_out += o.value
+            if self.is_mine(o.address):
+                v_out_mine += o.value
                 is_relevant = True
         if is_pruned:
             # some inputs are mine:
@@ -749,6 +736,21 @@ class AddressSynchronizer(PrintError):
         if not is_mine:
             fee = None
         return is_relevant, is_mine, v, fee
+
+    def get_tx_fee(self, tx: Transaction) -> Optional[int]:
+        if not tx:
+            return None
+        if hasattr(tx, '_cached_fee'):
+            return tx._cached_fee
+        with self.lock, self.transaction_lock:
+            is_relevant, is_mine, v, fee = self.get_wallet_delta(tx)
+            if fee is None:
+                txid = tx.txid()
+                fee = self.tx_fees.get(txid)
+            # only cache non-None, as None can still change while syncing
+            if fee is not None:
+                tx._cached_fee = fee
+        return fee
 
     def get_addr_io(self, address):
         with self.lock, self.transaction_lock:
@@ -812,7 +814,7 @@ class AddressSynchronizer(PrintError):
         return c, u, x
 
     @with_local_height_cached
-    def get_utxos(self, domain=None, excluded=None, mature=False, confirmed_only=False):
+    def get_utxos(self, domain=None, excluded=None, mature=False, confirmed_only=False, nonlocal_only=False):
         coins = []
         if domain is None:
             domain = self.get_addresses()
@@ -823,6 +825,8 @@ class AddressSynchronizer(PrintError):
             utxos = self.get_addr_utxo(addr)
             for x in utxos.values():
                 if confirmed_only and x['height'] <= 0:
+                    continue
+                if nonlocal_only and x['height'] == TX_HEIGHT_LOCAL:
                     continue
                 if mature and x['coinbase'] and x['height'] + COINBASE_MATURITY > self.get_local_height():
                     continue
@@ -849,3 +853,6 @@ class AddressSynchronizer(PrintError):
     def is_empty(self, address):
         c, u, x = self.get_addr_balance(address)
         return c+u+x == 0
+
+    def synchronize(self):
+        pass

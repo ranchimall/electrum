@@ -90,7 +90,7 @@ class JsonDB(PrintError):
             json.dumps(key, cls=util.MyEncoder)
             json.dumps(value, cls=util.MyEncoder)
         except:
-            self.print_error("json error: cannot save", key)
+            self.print_error(f"json error: cannot save {repr(key)} ({repr(value)})")
             return
         with self.db_lock:
             if value is not None:
@@ -122,12 +122,7 @@ class JsonDB(PrintError):
             os.fsync(f.fileno())
 
         mode = os.stat(self.path).st_mode if os.path.exists(self.path) else stat.S_IREAD | stat.S_IWRITE
-        # perform atomic write on POSIX systems
-        try:
-            os.rename(temp_path, self.path)
-        except:
-            os.remove(self.path)
-            os.rename(temp_path, self.path)
+        os.replace(temp_path, self.path)
         os.chmod(self.path, mode)
         self.print_error("saved", self.path)
         self.modified = False
@@ -175,6 +170,8 @@ class WalletStorage(JsonDB):
                     self.print_error('Failed to convert label to json format', key)
                     continue
                 self.data[key] = value
+        if not isinstance(self.data, dict):
+            raise WalletFileException("Malformed wallet file (not dict)")
 
         # check here if I need to load a plugin
         t = self.get('wallet_type')
@@ -575,10 +572,13 @@ class WalletStorage(JsonDB):
         # delete verified_tx3 as its structure changed
         if not self._is_upgrade_method_needed(17, 17):
             return
-
         self.put('verified_tx3', None)
-
         self.put('seed_version', 18)
+
+    # def convert_version_19(self):
+    #     TODO for "next" upgrade:
+    #       - move "pw_hash_version" from keystore to storage
+    #     pass
 
     def convert_imported(self):
         if not self._is_upgrade_method_needed(0, 13):

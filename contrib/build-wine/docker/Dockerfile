@@ -12,7 +12,9 @@ RUN dpkg --add-architecture i386 && \
         software-properties-common=0.96.24.32.1 \
         && \
     wget -nc https://dl.winehq.org/wine-builds/Release.key && \
+    wget -nc https://dl.winehq.org/wine-builds/winehq.key && \
     apt-key add Release.key && \
+    apt-key add winehq.key && \
     apt-add-repository https://dl.winehq.org/wine-builds/ubuntu/ && \
     apt-get update -q && \
     apt-get install -qy \
@@ -20,7 +22,7 @@ RUN dpkg --add-architecture i386 && \
         wine-stable-i386:i386=3.0.1~bionic \
         wine-stable:amd64=3.0.1~bionic \
         winehq-stable:amd64=3.0.1~bionic \
-        git=1:2.17.1-1ubuntu0.1 \
+        git=1:2.17.1-1ubuntu0.4 \
         p7zip-full=16.02+dfsg-6 \
         make=4.1-9.1ubuntu1 \
         mingw-w64=5.0.3-1 \

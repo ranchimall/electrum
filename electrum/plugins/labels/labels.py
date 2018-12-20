@@ -9,7 +9,7 @@ import base64
 from electrum.plugin import BasePlugin, hook
 from electrum.crypto import aes_encrypt_with_iv, aes_decrypt_with_iv
 from electrum.i18n import _
-from electrum.util import aiosafe, make_aiohttp_session
+from electrum.util import log_exceptions, ignore_exceptions, make_aiohttp_session
 
 class LabelsPlugin(BasePlugin):
 
@@ -58,7 +58,8 @@ class LabelsPlugin(BasePlugin):
         # Caller will write the wallet
         self.set_nonce(wallet, nonce + 1)
 
-    @aiosafe
+    @ignore_exceptions
+    @log_exceptions
     async def do_post_safe(self, *args):
         await self.do_post(*args)
 
@@ -72,7 +73,10 @@ class LabelsPlugin(BasePlugin):
         url = 'https://' + self.target_host + url
         async with make_aiohttp_session(self.proxy) as session:
             async with session.post(url, json=data) as result:
-                return await result.json()
+                try:
+                    return await result.json()
+                except Exception as e:
+                    raise Exception('Could not decode: ' + await result.text()) from e
 
     async def push_thread(self, wallet):
         wallet_data = self.wallets.get(wallet, None)
@@ -129,7 +133,8 @@ class LabelsPlugin(BasePlugin):
         self.set_nonce(wallet, response["nonce"] + 1)
         self.on_pulled(wallet)
 
-    @aiosafe
+    @ignore_exceptions
+    @log_exceptions
     async def pull_safe_thread(self, wallet, force):
         await self.pull_thread(wallet, force)
 

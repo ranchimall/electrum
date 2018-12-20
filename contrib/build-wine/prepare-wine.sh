@@ -13,13 +13,14 @@ LIBUSB_FILENAME=libusb-1.0.22.7z
 LIBUSB_URL=https://prdownloads.sourceforge.net/project/libusb/libusb-1.0/libusb-1.0.22/$LIBUSB_FILENAME?download
 LIBUSB_SHA256=671f1a420757b4480e7fadc8313d6fb3cbb75ca00934c417c1efa6e77fb8779b
 
-PYTHON_VERSION=3.6.6
+PYTHON_VERSION=3.6.7
 
 ## These settings probably don't need change
 export WINEPREFIX=/opt/wine64
 #export WINEARCH='win32'
 
-PYHOME=c:/python$PYTHON_VERSION
+PYTHON_FOLDER="python3"
+PYHOME="c:/$PYTHON_FOLDER"
 PYTHON="wine $PYHOME/python.exe -OO -B"
 
 
@@ -105,7 +106,7 @@ for msifile in core dev exe lib pip tools; do
     wget -N -c "https://www.python.org/ftp/python/$PYTHON_VERSION/win32/${msifile}.msi"
     wget -N -c "https://www.python.org/ftp/python/$PYTHON_VERSION/win32/${msifile}.msi.asc"
     verify_signature "${msifile}.msi.asc" $KEYRING_PYTHON_DEV
-    wine msiexec /i "${msifile}.msi" /qb TARGETDIR=C:/python$PYTHON_VERSION
+    wine msiexec /i "${msifile}.msi" /qb TARGETDIR=$PYHOME
 done
 
 # upgrade pip
@@ -136,7 +137,7 @@ download_if_not_exist $LIBUSB_FILENAME "$LIBUSB_URL"
 verify_hash $LIBUSB_FILENAME "$LIBUSB_SHA256"
 7z x -olibusb $LIBUSB_FILENAME -aoa
 
-cp libusb/MS32/dll/libusb-1.0.dll $WINEPREFIX/drive_c/python$PYTHON_VERSION/
+cp libusb/MS32/dll/libusb-1.0.dll $WINEPREFIX/drive_c/$PYTHON_FOLDER/
 
 mkdir -p $WINEPREFIX/drive_c/tmp
 cp secp256k1/libsecp256k1.dll $WINEPREFIX/drive_c/tmp/
