@@ -602,8 +602,7 @@ class Abstract_Wallet(AddressSynchronizer):
             return tx
         return candidate
 
-    def make_unsigned_transaction(self, coins, outputs, config, fixed_fee=None,
-                                  change_addr=None, is_sweep=False, flodata=None):
+    def make_unsigned_transaction(self, coins, outputs, config, fixed_fee=None, change_addr=None, is_sweep=False, flodata=None):
         # check outputs
         i_max = None
         for i, o in enumerate(outputs):

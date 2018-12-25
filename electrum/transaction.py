@@ -68,11 +68,9 @@ class TxOutput(NamedTuple):
     address: str
     value: Union[int, str]  # str when the output is set to max: '!'
 
-
 class TxOutputForUI(NamedTuple):
     address: str
     value: int
-
 
 class TxOutputHwInfo(NamedTuple):
     address_index: Tuple

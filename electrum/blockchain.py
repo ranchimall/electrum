@@ -30,7 +30,6 @@ from .crypto import sha256d
 from . import constants
 from .util import bfh, bh2u
 from .simple_config import SimpleConfig
-
 try:
     import hashlib
     getPoWHash = lambda x: hashlib.scrypt(password=x, salt=x, n=1024, r=1, p=1, dklen=32)
@@ -272,14 +271,24 @@ class Blockchain(util.PrintError):
             raise Exception("prev hash mismatch: %s vs %s" % (prev_hash, header.get('prev_block_hash')))
         if constants.net.TESTNET:
             return
+#<<<<<<< HEAD
         # bits = self.target_to_bits(target)
+        #bits = target
+        #if bits != header.get('bits'):
+        #    raise Exception("bits mismatch: %s vs %s" % (bits, header.get('bits')))
+        #block_hash = int('0x' + _hash, 16)
+        #target_val = self.bits_to_target(bits)
+        #if int('0x' + _powhash, 16) > target_val:
+        #    raise Exception("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target_val))
+#=======
+        #bits = cls.target_to_bits(target)
         bits = target
         if bits != header.get('bits'):
             raise Exception("bits mismatch: %s vs %s" % (bits, header.get('bits')))
-        block_hash = int('0x' + _hash, 16)
-        target_val = self.bits_to_target(bits)
-        #if int('0x' + _powhash, 16) > target_val:
-        #    raise Exception("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target_val))
+        block_hash_as_num = int.from_bytes(bfh(_hash), byteorder='big')
+        if block_hash_as_num > target:
+            raise Exception(f"insufficient proof of work: {block_hash_as_num} vs target {target}")
+#>>>>>>> upstream/master
 
     def verify_chunk(self, index: int, data: bytes) -> None:
         num = len(data) // HEADER_SIZE
@@ -550,12 +559,12 @@ class Blockchain(util.PrintError):
         return bnNew
 
     @classmethod
-    def bits_to_target(self, bits: int) -> int:
+    def bits_to_target(cls, bits: int) -> int:
         bitsN = (bits >> 24) & 0xff
-        if not (bitsN >= 0x03 and bitsN <= 0x1e):
-            raise BaseException("First part of bits should be in [0x03, 0x1e]")
+        if not (0x03 <= bitsN <= 0x1d):
+            raise Exception("First part of bits should be in [0x03, 0x1d]")
         bitsBase = bits & 0xffffff
-        if not (bitsBase >= 0x8000 and bitsBase <= 0x7fffff):
+        if not (0x8000 <= bitsBase <= 0x7fffff):
             raise Exception("Second part of bits should be in [0x8000, 0x7fffff]")
         return bitsBase << (8 * (bitsN - 3))
 
