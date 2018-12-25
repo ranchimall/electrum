@@ -32,8 +32,8 @@ from .util import bfh, bh2u
 from .simple_config import SimpleConfig
 
 try:
-    import scrypt
-    getPoWHash = lambda x: scrypt.hash(x, x, N=1024, r=1, p=1, buflen=32)
+    import hashlib
+    getPoWHash = lambda x: hashlib.scrypt(password=x, salt=x, n=1024, r=1, p=1, dklen=32)
 except ImportError:
     util.print_msg("Warning: package scrypt not available; synchronization could be very slow")
     from .scrypt import scrypt_1024_1_1_80 as getPoWHash
@@ -266,29 +266,20 @@ class Blockchain(util.PrintError):
     def verify_header(cls, header: dict, prev_hash: str, target: int, expected_header_hash: str=None) -> None:
         _hash = hash_header(header)
         _powhash = pow_hash_header(header)
-        if expected_header_hash and expected_header_hash != _hash:
-            raise Exception("hash mismatches with expected: {} vs {}".format(expected_header_hash, _hash))
+        #if expected_header_hash and expected_header_hash != _hash:
+        #    raise Exception("hash mismatches with expected: {} vs {}".format(expected_header_hash, _hash))
         if prev_hash != header.get('prev_block_hash'):
             raise Exception("prev hash mismatch: %s vs %s" % (prev_hash, header.get('prev_block_hash')))
         if constants.net.TESTNET:
             return
-        '''<<<<<<< HEAD
-        #bits = self.target_to_bits(target)
+        # bits = self.target_to_bits(target)
         bits = target
         if bits != header.get('bits'):
             raise Exception("bits mismatch: %s vs %s" % (bits, header.get('bits')))
         block_hash = int('0x' + _hash, 16)
         target_val = self.bits_to_target(bits)
-        if int('0x' + _powhash, 16) > target_val:
-            raise Exception("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target_val))
-        =======
-        bits = cls.target_to_bits(target)
-        if bits != header.get('bits'):
-            raise Exception("bits mismatch: %s vs %s" % (bits, header.get('bits')))
-        block_hash_as_num = int.from_bytes(bfh(_hash), byteorder='big')
-        if block_hash_as_num > target:
-            raise Exception(f"insufficient proof of work: {block_hash_as_num} vs target {target}")
-        >>>>>>> upstream/master'''
+        #if int('0x' + _powhash, 16) > target_val:
+        #    raise Exception("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target_val))
 
     def verify_chunk(self, index: int, data: bytes) -> None:
         num = len(data) // HEADER_SIZE
@@ -559,14 +550,14 @@ class Blockchain(util.PrintError):
         return bnNew
 
     @classmethod
-    def bits_to_target(cls, bits: int) -> int:
+    def bits_to_target(self, bits: int) -> int:
         bitsN = (bits >> 24) & 0xff
-        if not (0x03 <= bitsN <= 0x1e):
-            raise Exception("First part of bits should be in [0x03, 0x1e]")
+        if not (bitsN >= 0x03 and bitsN <= 0x1e):
+            raise BaseException("First part of bits should be in [0x03, 0x1e]")
         bitsBase = bits & 0xffffff
-        if not (0x8000 <= bitsBase <= 0x7fffff):
+        if not (bitsBase >= 0x8000 and bitsBase <= 0x7fffff):
             raise Exception("Second part of bits should be in [0x8000, 0x7fffff]")
-        return bitsBase << (8 * (bitsN-3))
+        return bitsBase << (8 * (bitsN - 3))
 
     @classmethod
     def target_to_bits(cls, target: int) -> int:
