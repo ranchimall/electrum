@@ -265,30 +265,20 @@ class Blockchain(util.PrintError):
     def verify_header(cls, header: dict, prev_hash: str, target: int, expected_header_hash: str=None) -> None:
         _hash = hash_header(header)
         _powhash = pow_hash_header(header)
-        #if expected_header_hash and expected_header_hash != _hash:
-        #    raise Exception("hash mismatches with expected: {} vs {}".format(expected_header_hash, _hash))
+        if expected_header_hash and expected_header_hash != _hash:
+            raise Exception("hash mismatches with expected: {} vs {}".format(expected_header_hash, _hash))
         if prev_hash != header.get('prev_block_hash'):
             raise Exception("prev hash mismatch: %s vs %s" % (prev_hash, header.get('prev_block_hash')))
         if constants.net.TESTNET:
             return
-#<<<<<<< HEAD
-        # bits = self.target_to_bits(target)
-        #bits = target
-        #if bits != header.get('bits'):
-        #    raise Exception("bits mismatch: %s vs %s" % (bits, header.get('bits')))
-        #block_hash = int('0x' + _hash, 16)
-        #target_val = self.bits_to_target(bits)
-        #if int('0x' + _powhash, 16) > target_val:
-        #    raise Exception("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target_val))
-#=======
         #bits = cls.target_to_bits(target)
         bits = target
         if bits != header.get('bits'):
             raise Exception("bits mismatch: %s vs %s" % (bits, header.get('bits')))
         block_hash_as_num = int.from_bytes(bfh(_hash), byteorder='big')
-        if block_hash_as_num > target:
-            raise Exception(f"insufficient proof of work: {block_hash_as_num} vs target {target}")
-#>>>>>>> upstream/master
+        target_val = cls.bits_to_target(bits)
+        if int('0x' + _powhash, 16) > target_val:
+            raise Exception("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target_val))
 
     def verify_chunk(self, index: int, data: bytes) -> None:
         num = len(data) // HEADER_SIZE
@@ -561,8 +551,8 @@ class Blockchain(util.PrintError):
     @classmethod
     def bits_to_target(cls, bits: int) -> int:
         bitsN = (bits >> 24) & 0xff
-        if not (0x03 <= bitsN <= 0x1d):
-            raise Exception("First part of bits should be in [0x03, 0x1d]")
+        if not (0x03 <= bitsN <= 0x1e):
+            raise Exception("First part of bits should be in [0x03, 0x1e]")
         bitsBase = bits & 0xffffff
         if not (0x8000 <= bitsBase <= 0x7fffff):
             raise Exception("Second part of bits should be in [0x8000, 0x7fffff]")
