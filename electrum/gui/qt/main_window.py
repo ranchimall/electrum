@@ -86,6 +86,7 @@ class StatusBarButton(QPushButton):
         self.clicked.connect(self.onPress)
         self.func = func
         self.setIconSize(QSize(25,25))
+        self.setCursor(QCursor(Qt.PointingHandCursor))
 
     def onPress(self, checked=False):
         '''Drops the unwanted PyQt5 "checked" argument'''
@@ -610,7 +611,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             _("Before reporting a bug, upgrade to the most recent version of Electrum (latest release or git HEAD), and include the version number in your report."),
             _("Try to explain not only what the bug is, but how it occurs.")
          ])
-        self.show_message(msg, title="Electrum - " + _("Reporting Bugs"))
+        self.show_message(msg, title="Electrum - " + _("Reporting Bugs"), rich_text=True)
 
     def notify_transactions(self):
         if self.tx_notification_queue.qsize() == 0:
@@ -1697,7 +1698,10 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                     self.invoice_list.update()
                     self.do_clear()
                 else:
-                    parent.show_error(msg)
+                    display_msg = _('The server returned an error when broadcasting the transaction.')
+                    if msg:
+                        display_msg += '\n' + msg
+                    parent.show_error(display_msg)
 
         WaitingDialog(self, _('Broadcasting transaction...'),
                       broadcast_thread, broadcast_done, self.on_error)
