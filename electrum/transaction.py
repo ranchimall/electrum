@@ -41,6 +41,7 @@ from .bitcoin import (TYPE_ADDRESS, TYPE_PUBKEY, TYPE_SCRIPT, hash_160,
                       push_script, int_to_hex, push_script, b58_address_to_hash160)
 from .crypto import sha256d
 from .keystore import xpubkey_to_address, xpubkey_to_pubkey
+import codecs
 
 
 NO_SIGNATURE = 'ff'
@@ -1047,8 +1048,7 @@ class Transaction:
         nVersion = int_to_hex(self.version, 4)
         nHashType = int_to_hex(1, 4)
         nLocktime = int_to_hex(self.locktime, 4)
-        nFloData = var_int(len(self.flodata)) + str(codecs.encode(bytes(self.flodata, 'utf-8'), 'hex_codec'),
-                                                        'utf-8')
+        nFloData = var_int(len(self.flodata)) + str(codecs.encode(bytes(self.flodata, 'utf-8'), 'hex_codec'),'utf-8')
         inputs = self.inputs()
         outputs = self.outputs()
         txin = inputs[i]

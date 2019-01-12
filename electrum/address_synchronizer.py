@@ -73,13 +73,12 @@ class AddressSynchronizer(PrintError):
         # Verified transactions.  txid -> TxMinedInfo.  Access with self.lock.
         verified_tx = storage.get('verified_tx3', {})
         self.verified_tx = {}  # type: Dict[str, TxMinedInfo]
-        for txid, (height, timestamp, txpos, header_hash, flodata) in verified_tx.items():
+        for txid, (height, timestamp, txpos, header_hash) in verified_tx.items():
             self.verified_tx[txid] = TxMinedInfo(height=height,
                                                  conf=None,
                                                  timestamp=timestamp,
                                                  txpos=txpos,
-                                                 header_hash=header_hash,
-                                                 flodata=flodata)
+                                                 header_hash=header_hash)
         # Transactions pending verification.  txid -> tx_height. Access with self.lock.
         self.unverified_tx = defaultdict(int)
         # true when synchronized

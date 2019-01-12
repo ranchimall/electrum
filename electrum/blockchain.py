@@ -30,12 +30,12 @@ from .crypto import sha256d
 from . import constants
 from .util import bfh, bh2u
 from .simple_config import SimpleConfig
+
 try:
-    import hashlib
-    getPoWHash = lambda x: hashlib.scrypt(password=x, salt=x, n=1024, r=1, p=1, dklen=32)
+    import pylibscrypt
+    getPoWHash = lambda x: pylibscrypt.scrypt(password=x, salt=x, N=1024, r=1, p=1, olen=32)
 except ImportError:
-    util.print_msg("Warning: package scrypt not available; synchronization could be very slow")
-    from .scrypt import scrypt_1024_1_1_80 as getPoWHash
+    util.print_msg("Warning: package pylibscrypt not available")
 
 
 HEADER_SIZE = 80  # bytes
@@ -261,10 +261,13 @@ class Blockchain(util.PrintError):
         p = self.path()
         self._size = os.path.getsize(p)//HEADER_SIZE if os.path.exists(p) else 0
 
+    #def pow_hash_header(header):
+    #    return hash_encode(getPoWHash(bfh(serialize_header(header))))
+
     @classmethod
     def verify_header(cls, header: dict, prev_hash: str, target: int, expected_header_hash: str=None) -> None:
         _hash = hash_header(header)
-        _powhash = pow_hash_header(header)
+        #_powhash = pow_hash_header(header)
         if expected_header_hash and expected_header_hash != _hash:
             raise Exception("hash mismatches with expected: {} vs {}".format(expected_header_hash, _hash))
         if prev_hash != header.get('prev_block_hash'):
@@ -277,8 +280,8 @@ class Blockchain(util.PrintError):
             raise Exception("bits mismatch: %s vs %s" % (bits, header.get('bits')))
         block_hash_as_num = int.from_bytes(bfh(_hash), byteorder='big')
         target_val = cls.bits_to_target(bits)
-        if int('0x' + _powhash, 16) > target_val:
-            raise Exception("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target_val))
+        #if int('0x' + _powhash, 16) > target_val:
+        #    raise Exception("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target_val))
 
     def verify_chunk(self, index: int, data: bytes) -> None:
         num = len(data) // HEADER_SIZE
