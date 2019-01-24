@@ -207,7 +207,7 @@ class Interface(PrintError):
     async def _try_saving_ssl_cert_for_first_time(self, ca_ssl_context):
         try:
             ca_signed = await self.is_server_ca_signed(ca_ssl_context)
-        except (OSError, aiorpcx.socks.SOCKSFailure) as e:
+        except (OSError, aiorpcx.socks.SOCKSError) as e:
             raise ErrorGettingSSLCertFromServer(e) from e
         if ca_signed:
             with open(self.cert_path, 'w') as f:
@@ -267,7 +267,7 @@ class Interface(PrintError):
             try:
                 return await func(self, *args, **kwargs)
             except GracefulDisconnect as e:
-                self.print_error("disconnecting gracefully. {}".format(e))
+                self.print_error("disconnecting gracefully. {}".format(repr(e)))
             finally:
                 await self.network.connection_down(self)
                 self.got_disconnected.set_result(1)
@@ -284,7 +284,7 @@ class Interface(PrintError):
             return
         try:
             await self.open_session(ssl_context)
-        except (asyncio.CancelledError, OSError, aiorpcx.socks.SOCKSFailure) as e:
+        except (asyncio.CancelledError, OSError, aiorpcx.socks.SOCKSError) as e:
             self.print_error('disconnecting due to: {}'.format(repr(e)))
             return
 
