@@ -40,7 +40,7 @@ from kivy.lang import Builder
 from .uix.dialogs.installwizard import InstallWizard
 from .uix.dialogs import InfoBubble, crash_reporter
 from .uix.dialogs import OutputList, OutputItem
-from .uix.dialogs import TopLabel, RefLabel
+from .uix.dialogs import TopLabel, RefLabel, FLODataLabel
 
 #from kivy.core.window import Window
 #Window.softinput_mode = 'below_target'

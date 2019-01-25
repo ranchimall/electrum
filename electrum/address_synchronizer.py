@@ -73,12 +73,13 @@ class AddressSynchronizer(PrintError):
         # Verified transactions.  txid -> TxMinedInfo.  Access with self.lock.
         verified_tx = storage.get('verified_tx3', {})
         self.verified_tx = {}  # type: Dict[str, TxMinedInfo]
-        for txid, (height, timestamp, txpos, header_hash) in verified_tx.items():
+        for txid, (height, timestamp, txpos, header_hash, flodata) in verified_tx.items():
             self.verified_tx[txid] = TxMinedInfo(height=height,
                                                  conf=None,
                                                  timestamp=timestamp,
                                                  txpos=txpos,
-                                                 header_hash=header_hash)
+                                                 header_hash=header_hash,
+                                                 flodata=flodata)
         # Transactions pending verification.  txid -> tx_height. Access with self.lock.
         self.unverified_tx = defaultdict(int)
         # true when synchronized
@@ -453,7 +454,7 @@ class AddressSynchronizer(PrintError):
             verified_tx_to_save = {}
             for txid, tx_info in self.verified_tx.items():
                 verified_tx_to_save[txid] = (tx_info.height, tx_info.timestamp,
-                                             tx_info.txpos, tx_info.header_hash)
+                                             tx_info.txpos, tx_info.header_hash, tx_info.flodata)
             self.storage.put('verified_tx3', verified_tx_to_save)
             if write:
                 self.storage.write()
@@ -633,7 +634,8 @@ class AddressSynchronizer(PrintError):
         with self.lock:
             if tx_hash in self.verified_tx:
                 info = self.verified_tx[tx_hash]
-                flodata = info[4]
+                print(info)
+                flodata = info[5]
                 return flodata
             elif tx_hash in self.unverified_tx:
                 tx = self.transactions.get(tx_hash)

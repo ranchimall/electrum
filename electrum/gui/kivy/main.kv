@@ -151,6 +151,20 @@
     data: ''
     text: ' '.join(map(''.join, zip(*[iter(self.data)]*4))) if self.data else ''
 
+<FLODataLabel>
+    font_size: '6pt'
+    name: ''
+    data: ''
+    text: self.data
+    touched: False
+    padding: '10dp', '10dp'
+    canvas.before:
+        Color:
+            rgb: .3, .3, .3
+        Rectangle:
+            size: self.size
+            pos: self.pos
+
 <InfoBubble>
     size_hint: None, None
     width: '270dp' if root.fs else min(self.width, dp(270))

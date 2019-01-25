@@ -218,3 +218,6 @@ class TopLabel(Factory.Label):
 
 class RefLabel(TopLabel):
     pass
+
+class FLODataLabel(TopLabel):
+    pass

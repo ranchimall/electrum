@@ -137,6 +137,7 @@ class HistoryScreen(CScreen):
         status, status_str = self.app.wallet.get_tx_status(tx_hash, tx_mined_status)
         icon = "atlas://electrum/gui/kivy/theming/light/" + TX_ICONS[status]
         label = self.app.wallet.get_label(tx_hash) if tx_hash else _('Pruned transaction outputs')
+        flodata = self.app.wallet.get_flodata(tx_hash)
         ri = {}
         ri['screen'] = self
         ri['tx_hash'] = tx_hash
@@ -144,6 +145,7 @@ class HistoryScreen(CScreen):
         ri['date'] = status_str
         ri['message'] = label
         ri['confirmations'] = tx_mined_status.conf
+        ri['flodata'] = flodata
         if value is not None:
             ri['is_mine'] = value < 0
             if value < 0: value = - value

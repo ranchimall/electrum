@@ -47,6 +47,8 @@ except:
     print_error("qt/history_list: could not import electrum.plot. This feature needs matplotlib to be installed.")
     plot_history = None
 
+import pdb
+
 # note: this list needs to be kept in sync with another in kivy
 TX_ICONS = [
     "unconfirmed.png",
@@ -71,6 +73,7 @@ class HistoryColumns(IntEnum):
     FIAT_ACQ_PRICE = 6
     FIAT_CAP_GAINS = 7
     TXID = 8
+    FLO_DATA = 9
 
 class HistorySortModel(QSortFilterProxyModel):
     def lessThan(self, source_left: QModelIndex, source_right: QModelIndex):
@@ -122,6 +125,7 @@ class HistoryModel(QAbstractItemModel, PrintError):
         conf = tx_item['confirmations']
         txpos = tx_item['txpos_in_block'] or 0
         height = tx_item['height']
+        flodata = self.parent.wallet.get_flodata(tx_hash)
         try:
             status, status_str = self.tx_status_cache[tx_hash]
         except KeyError:
@@ -145,6 +149,7 @@ class HistoryModel(QAbstractItemModel, PrintError):
                 HistoryColumns.FIAT_CAP_GAINS:
                     tx_item['capital_gain'].value if 'capital_gain' in tx_item else None,
                 HistoryColumns.TXID: tx_hash,
+                HistoryColumns.FLO_DATA: flodata,
             }
             return QVariant(d[col])
         if role not in (Qt.DisplayRole, Qt.EditRole):
@@ -194,6 +199,8 @@ class HistoryModel(QAbstractItemModel, PrintError):
             return QVariant(self.parent.fx.format_fiat(cg))
         elif col == HistoryColumns.TXID:
             return QVariant(tx_hash)
+        elif col == HistoryColumns.FLO_DATA:
+            return QVariant(flodata)
         return QVariant()
 
     def parent(self, index: QModelIndex):
@@ -325,6 +332,7 @@ class HistoryModel(QAbstractItemModel, PrintError):
             HistoryColumns.FIAT_ACQ_PRICE: fiat_acq_title,
             HistoryColumns.FIAT_CAP_GAINS: fiat_cg_title,
             HistoryColumns.TXID: 'TXID',
+            HistoryColumns.FLO_DATA: _('FLO Data'),
         }[section]
 
     def flags(self, idx):

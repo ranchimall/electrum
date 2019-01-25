@@ -26,6 +26,7 @@ Builder.load_string('''
     status_str: ''
     description: ''
     outputs_str: ''
+    flodata: ''
     BoxLayout:
         orientation: 'vertical'
         ScrollView:
@@ -66,6 +67,11 @@ Builder.load_string('''
                     text: _('Outputs') + ':'
                 OutputList:
                     id: output_list
+                TopLabel:
+                    text: _('FLO data') + ':'
+                FLODataLabel:
+                    data: root.flodata
+                    name: _('FLO data')
         Widget:
             size_hint: 1, 0.1
 
@@ -109,6 +115,7 @@ class TxDialog(Factory.Popup):
     def update(self):
         format_amount = self.app.format_amount_and_units
         tx_hash, self.status_str, self.description, self.can_broadcast, self.can_rbf, amount, fee, height, conf, timestamp, exp_n = self.wallet.get_tx_info(self.tx)
+        self.flodata = self.wallet.get_flodata(tx_hash)
         self.tx_hash = tx_hash or ''
         if timestamp:
             self.date_label = _('Date')

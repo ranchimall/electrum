@@ -26,6 +26,7 @@
     confirmations: 0
     date: ''
     quote_text: ''
+    flodata: ''
     Image:
         id: icon
         source: root.icon
@@ -46,6 +47,11 @@
             font_size: '14sp'
             shorten: True
             text: root.date + '   ' + root.message
+        CardLabel:
+            color: .699, .699, .699, 1
+            font_size: '14sp'
+            shorten: True
+            text: root.flodata
         Widget
 
 <HistoryRecycleView>:

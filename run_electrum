@@ -287,7 +287,9 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # config is an object passed to the various constructors (wallet, interface, gui)
-    if is_android:
+    #if True:
+    #if is_android:
+    if False:
         config_options = {
             'verbosity': '',
             'cmd': 'gui',
