@@ -634,7 +634,6 @@ class AddressSynchronizer(PrintError):
         with self.lock:
             if tx_hash in self.verified_tx:
                 info = self.verified_tx[tx_hash]
-                print(info)
                 flodata = info[5]
                 return flodata
             elif tx_hash in self.unverified_tx:

@@ -957,13 +957,13 @@ class ElectrumWindow(App):
         d.open()
 
     def flodata_dialog(self, screen):
-        from .uix.dialogs.label_dialog import LabelDialog
+        from .uix.dialogs.flodata_dialog import FLODataDialog
         text = screen.flodata
 
         def callback(text):
             screen.flodata = text
 
-        d = LabelDialog(_('Enter FLO data'), text, callback)
+        d = FLODataDialog(_('Enter FLO data'), text, callback)
         d.open()
 
     def amount_dialog(self, screen, show_max):
