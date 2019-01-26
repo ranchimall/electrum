@@ -2,6 +2,8 @@ from kivy.app import App
 from kivy.factory import Factory
 from kivy.properties import ObjectProperty
 from kivy.lang import Builder
+from kivy.uix.textinput import TextInput
+from kivy.properties import NumericProperty
 
 Builder.load_string('''
 <FLODataDialog@Popup>
@@ -13,11 +15,12 @@ Builder.load_string('''
         orientation: 'vertical'
         Widget:
             size_hint: 1, 0.4
-        TextInput:
+        LimitedInput:
             id:input
             padding: '5dp'
             size_hint: 1, 1
             height: '27dp'
+            max_characters: 527
             pos_hint: {'center_y':.5}
             text:''
             multiline: True
@@ -45,6 +48,13 @@ Builder.load_string('''
                     root.callback(input.text)
                     popup.dismiss()
 ''')
+
+class LimitedInput(TextInput):
+    max_characters = NumericProperty(0)
+    def insert_text(self, substring, from_undo=False):
+        if len(self.text) > self.max_characters and self.max_characters > 0:
+            substring = ""
+        TextInput.insert_text(self, substring, from_undo)
 
 class FLODataDialog(Factory.Popup):
 

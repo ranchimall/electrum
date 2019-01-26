@@ -207,6 +207,19 @@
             size: self.size
             pos: self.pos
 
+<FLODataBlueBottom@GridLayout>
+    item_height: dp(100)
+    foreground_color: .843, .914, .972, 1
+    cols: 1
+    padding: '12dp', 0
+    canvas.before:
+        Color:
+            rgba: 0.192, .498, 0.745, 1
+        BorderImage:
+            source: 'atlas://electrum/gui/kivy/theming/light/card_bottom'
+            size: self.size
+            pos: self.pos
+
 
 <AddressFilter@GridLayout>
 	item_height: dp(42)
@@ -260,6 +273,26 @@
         Rectangle:
             size: self.size
             pos: self.pos
+
+<FLODataButton@Button>:
+    background_color: 1, .585, .878, 0
+    halign: 'left'
+    text_size: (self.width-10, None)
+    size_hint: 0.5, None
+    default_text: ''
+    text: self.default_text
+    padding: '5dp', '5dp'
+    height: '100dp'
+    text_color: self.foreground_color
+    disabled_color: 1, 1, 1, 1
+    foreground_color: 1, 1, 1, 1
+    canvas.before:
+        Color:
+            rgba: (0.9, .498, 0.745, 1) if self.state == 'down' else self.background_color
+        Rectangle:
+            size: self.size
+            pos: self.pos
+
 
 <BlueButton@Button>:
     background_color: 1, .585, .878, 0

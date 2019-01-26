@@ -48,16 +48,16 @@
             shorten: True
             text: root.date + '   ' + root.message
         CardLabel:
-            color: .699, .699, .699, 1
+            color: .799, .799, .799, 1
             font_size: '14sp'
             shorten: True
-            text: root.flodata
+            text: root.flodata if root.flodata else ''
         Widget
 
 <HistoryRecycleView>:
     viewclass: 'HistoryItem'
     RecycleBoxLayout:
-        default_size: None, dp(56)
+        default_size: None, dp(70)
         default_size_hint: 1, None
         size_hint: 1, None
         height: self.minimum_height
