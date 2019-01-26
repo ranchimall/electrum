@@ -262,6 +262,7 @@ class CoinDesk(ExchangeBase):
         json = await self.get_json('api.coindesk.com',
                              '/v1/bpi/currentprice/%s.json' % ccy)
         result = {ccy: Decimal(json['bpi'][ccy]['rate_float'])}
+        print(result)
         return result
 
     def history_starts(self):
@@ -278,6 +279,13 @@ class CoinDesk(ExchangeBase):
                  % (start, end))
         json = await self.get_json('api.coindesk.com', query)
         return json['bpi']
+
+class CoinMarketcap(ExchangeBase):
+
+    async def get_rates(self, ccy):
+        json = await self.get_json('pro-api.coinmarketcap.com','/v1/cryptocurrency/quotes/latest?symbol=FLO&CMC_PRO_API_KEY=194ee8a1-5a58-4f3e-ba07-a1d6bc633210&convert=%s' % ccy)
+        result = {ccy: Decimal(json['data']['FLO']['quote'][ccy]['price'])}
+        return result
 
 
 class Coinsecure(ExchangeBase):
@@ -520,7 +528,7 @@ class FxThread(ThreadJob):
         return self.config.get("currency", "EUR")
 
     def config_exchange(self):
-        return self.config.get('use_exchange', 'BitcoinAverage')
+        return self.config.get('use_exchange', 'CoinMarketcap')
 
     def show_history(self):
         return self.is_enabled() and self.get_history_config() and self.ccy in self.exchange.history_ccys()

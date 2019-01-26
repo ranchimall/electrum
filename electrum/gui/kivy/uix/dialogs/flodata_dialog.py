@@ -14,7 +14,7 @@ Builder.load_string('''
     BoxLayout:
         orientation: 'vertical'
         Widget:
-            size_hint: 1, 0.4
+            size_hint: 1, 0.1
         LimitedInput:
             id:input
             padding: '5dp'
