@@ -207,10 +207,9 @@
             size: self.size
             pos: self.pos
 
-<FLODataBlueBottom@GridLayout>
-    item_height: dp(100)
+<FLODataBlueBottom@BoxLayout>
+    item_height: dp(60)
     foreground_color: .843, .914, .972, 1
-    cols: 1
     padding: '12dp', 0
     canvas.before:
         Color:
@@ -278,11 +277,9 @@
     background_color: 1, .585, .878, 0
     halign: 'left'
     text_size: (self.width-10, None)
-    size_hint: 0.5, None
+    size_hint: 1, 1
     default_text: ''
     text: self.default_text
-    padding: '5dp', '5dp'
-    height: '100dp'
     text_color: self.foreground_color
     disabled_color: 1, 1, 1, 1
     foreground_color: 1, 1, 1, 1
@@ -292,6 +289,8 @@
         Rectangle:
             size: self.size
             pos: self.pos
+
+<ClickableLabel@ButtonBehavior+Label>:
 
 
 <BlueButton@Button>:
@@ -312,6 +311,17 @@
         Rectangle:
             size: self.size
             pos: self.pos
+
+<ClickableInput@ButtonBehavior+TextInput>:
+    readonly: True
+    keyboard_mode: 'managed'
+    canvas:
+        Color:
+            rgba: 1, 0, 0, .3
+        Rectangle:
+            size: self.size
+            pos: self.pos
+
 
 <AddressButton@Button>:
 	background_color: 1, .585, .878, 0
@@ -495,6 +505,7 @@ BoxLayout:
                     text: _('Wallets')
                 ActionOvrButton:
                     name: 'network'
+                    text: _('Network')
                     text: _('Network')
                 ActionOvrButton:
                     name: 'settings'

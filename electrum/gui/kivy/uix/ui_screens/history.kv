@@ -69,15 +69,24 @@ HistoryScreen:
     content: history_container
     BoxLayout:
         orientation: 'vertical'
-        Button:
-            background_color: 0, 0, 0, 0
-            text: app.fiat_balance if app.is_fiat else app.balance
-            markup: True
-            color: .9, .9, .9, 1
-            font_size: '30dp'
-            bold: True
+        RelativeLayout:
             size_hint: 1, 0.25
-            on_release: app.is_fiat = not app.is_fiat if app.fx.is_enabled() else False
+            Button:
+                pos_hint: {'center_x': 0.5, 'center_y': 0.5}
+                background_color: 0, 0, 0, 0
+                text: app.fiat_balance if app.is_fiat else app.balance
+                markup: True
+                color: .9, .9, .9, 1
+                font_size: '30dp'
+                bold: True
+                on_release: app.is_fiat = not app.is_fiat if app.fx.is_enabled() else False
+            Label:
+                pos_hint: {'center_x': 0.5, 'center_y': 0.17}
+                background_color: 0, 0, 0, 0
+                markup: True
+                color: .5, .5, .5, 1
+                font_size: '14dp'
+                text: "Blocks : %d" % app.num_blocks
         HistoryRecycleView:
             id: history_container
             scroll_type: ['bars', 'content']
