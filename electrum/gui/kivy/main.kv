@@ -291,6 +291,16 @@
             pos: self.pos
 
 <ClickableLabel@ButtonBehavior+Label>:
+    padding: '5dp', '5dp'
+    text_color: self.foreground_color
+    disabled_color: 1, 1, 1, 1
+    foreground_color: 1, 1, 1, 1
+    canvas.before:
+        Color:
+            rgba: (0.9, .498, 0.745, 1) if self.state == 'down' else self.background_color
+        Rectangle:
+            size: self.size
+            pos: self.pos
 
 
 <BlueButton@Button>:
