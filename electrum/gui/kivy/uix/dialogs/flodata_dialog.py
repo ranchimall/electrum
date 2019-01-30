@@ -20,7 +20,7 @@ Builder.load_string('''
             padding: '5dp'
             size_hint: 1, 1
             height: '27dp'
-            max_characters: 527
+            max_characters: 1022
             pos_hint: {'center_y':.5}
             text:''
             multiline: True

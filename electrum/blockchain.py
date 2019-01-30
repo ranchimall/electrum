@@ -267,7 +267,7 @@ class Blockchain(util.PrintError):
     @classmethod
     def verify_header(cls, header: dict, prev_hash: str, target: int, expected_header_hash: str=None) -> None:
         _hash = hash_header(header)
-        _powhash = pow_hash_header(header)
+        #_powhash = pow_hash_header(header)
         if expected_header_hash and expected_header_hash != _hash:
             raise Exception("hash mismatches with expected: {} vs {}".format(expected_header_hash, _hash))
         if prev_hash != header.get('prev_block_hash'):
@@ -279,9 +279,9 @@ class Blockchain(util.PrintError):
         if bits != header.get('bits'):
             raise Exception("bits mismatch: %s vs %s" % (bits, header.get('bits')))
         block_hash_as_num = int.from_bytes(bfh(_hash), byteorder='big')
-        target_val = cls.bits_to_target(bits)
-        if int('0x' + _powhash, 16) > target_val:
-            raise Exception("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target_val))
+        #target_val = cls.bits_to_target(bits)
+        #if int('0x' + _powhash, 16) > target_val:
+        #    raise Exception("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target_val))
 
     def verify_chunk(self, index: int, data: bytes) -> None:
         num = len(data) // HEADER_SIZE
