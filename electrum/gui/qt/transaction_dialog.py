@@ -273,7 +273,7 @@ class TxDialog(QDialog, MessageBoxMixin):
         self.amount_label.setText(amount_str)
         self.fee_label.setText(fee_str)
         self.size_label.setText(size_str)
-        self.flodata_label.setText("FLO data: " + self.tx.flodata)
+        self.flodata_label.setText("FLO data: \"" + self.tx.flodata + str("\""))
         run_hook('transaction_dialog_update', self)
 
     def add_io(self, vbox):
