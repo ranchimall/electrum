@@ -262,7 +262,6 @@ class CoinDesk(ExchangeBase):
         json = await self.get_json('api.coindesk.com',
                              '/v1/bpi/currentprice/%s.json' % ccy)
         result = {ccy: Decimal(json['bpi'][ccy]['rate_float'])}
-        print(result)
         return result
 
     def history_starts(self):
@@ -279,6 +278,7 @@ class CoinDesk(ExchangeBase):
                  % (start, end))
         json = await self.get_json('api.coindesk.com', query)
         return json['bpi']
+
 
 class CoinMarketcap(ExchangeBase):
 
