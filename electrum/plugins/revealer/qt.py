@@ -11,20 +11,28 @@ Tiago Romagnani Silveira, 2017
 
 import os
 import random
-import qrcode
 import traceback
 from decimal import Decimal
+from functools import partial
+import sys
 
+import qrcode
 from PyQt5.QtPrintSupport import QPrinter
+from PyQt5.QtCore import Qt, QRectF, QRect, QSizeF, QUrl, QPoint, QSize
+from PyQt5.QtGui import (QPixmap, QImage, QBitmap, QPainter, QFontDatabase, QPen, QFont,
+                         QColor, QDesktopServices, qRgba, QPainterPath)
+from PyQt5.QtWidgets import (QGridLayout, QVBoxLayout, QHBoxLayout, QLabel,
+                             QPushButton, QLineEdit)
 
 from electrum.plugin import hook
 from electrum.i18n import _
-from electrum.util import make_dir, InvalidPassword, UserCancelled, bh2u, bfh
-from electrum.gui.qt.util import *
+from electrum.util import make_dir, InvalidPassword, UserCancelled
+from electrum.gui.qt.util import (read_QIcon, EnterButton, WWLabel, icon_path,
+                                  WindowModalDialog, Buttons, CloseButton, OkButton)
 from electrum.gui.qt.qrtextedit import ScanQRTextEdit
 from electrum.gui.qt.main_window import StatusBarButton
 
-from .revealer import RevealerPlugin, VersionedSeed
+from .revealer import RevealerPlugin
 
 
 class Plugin(RevealerPlugin):
@@ -54,7 +62,7 @@ class Plugin(RevealerPlugin):
 
     @hook
     def create_status_bar(self, parent):
-        b = StatusBarButton(QIcon(':icons/revealer.png'), "Revealer "+_("secret backup utility"),
+        b = StatusBarButton(read_QIcon('revealer.png'), "Revealer "+_("secret backup utility"),
                             partial(self.setup_dialog, parent))
         parent.addPermanentWidget(b)
 
@@ -98,7 +106,7 @@ class Plugin(RevealerPlugin):
         vbox = QVBoxLayout()
         logo = QLabel()
         self.hbox.addWidget(logo)
-        logo.setPixmap(QPixmap(':icons/revealer.png'))
+        logo.setPixmap(QPixmap(icon_path('revealer.png')))
         logo.setAlignment(Qt.AlignLeft)
         self.hbox.addSpacing(16)
         vbox.addWidget(WWLabel("<b>"+_("Revealer Secret Backup Plugin")+"</b><br>"
@@ -228,7 +236,7 @@ class Plugin(RevealerPlugin):
         self.vbox = QVBoxLayout()
         logo = QLabel()
         hbox.addWidget(logo)
-        logo.setPixmap(QPixmap(':icons/revealer.png'))
+        logo.setPixmap(QPixmap(icon_path('revealer.png')))
         logo.setAlignment(Qt.AlignLeft)
         hbox.addSpacing(16)
         self.vbox.addWidget(WWLabel("<b>" + _("Revealer Secret Backup Plugin") + "</b><br>"
@@ -549,7 +557,7 @@ class Plugin(RevealerPlugin):
                 painter.drawLine(base_img.width()-(dist_h), 0,  base_img.width()-(dist_h), base_img.height())
 
                 painter.drawImage(((total_distance_h))+11, ((total_distance_h))+11,
-                                  QImage(':icons/electrumb.png').scaledToWidth(2.1*(total_distance_h), Qt.SmoothTransformation))
+                                  QImage(icon_path('electrumb.png')).scaledToWidth(2.1*(total_distance_h), Qt.SmoothTransformation))
 
                 painter.setPen(QPen(Qt.white, border_thick*8))
                 painter.drawLine(base_img.width()-((total_distance_h))-(border_thick*8)/2-(border_thick/2)-2,
@@ -575,7 +583,7 @@ class Plugin(RevealerPlugin):
                 painter.drawLine(dist_h, 0,  dist_h, base_img.height())
                 painter.drawLine(0, base_img.height()-dist_v, base_img.width(), base_img.height()-(dist_v))
                 painter.drawLine(base_img.width()-(dist_h), 0,  base_img.width()-(dist_h), base_img.height())
-                logo = QImage(':icons/revealer_c.png').scaledToWidth(1.3*(total_distance_h))
+                logo = QImage(icon_path('revealer_c.png')).scaledToWidth(1.3*(total_distance_h))
                 painter.drawImage((total_distance_h)+ (border_thick), ((total_distance_h))+ (border_thick), logo, Qt.SmoothTransformation)
 
                 #frame around logo

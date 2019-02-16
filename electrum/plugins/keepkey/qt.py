@@ -1,11 +1,15 @@
 from functools import partial
 import threading
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QGridLayout, QInputDialog, QPushButton
-from PyQt5.QtWidgets import QVBoxLayout, QLabel
+from PyQt5.QtCore import Qt, QEventLoop, pyqtSignal, QRegExp
+from PyQt5.QtGui import QRegExpValidator
+from PyQt5.QtWidgets import (QVBoxLayout, QLabel, QGridLayout, QPushButton,
+                             QHBoxLayout, QButtonGroup, QGroupBox, QDialog,
+                             QTextEdit, QLineEdit, QRadioButton, QCheckBox, QWidget,
+                             QMessageBox, QFileDialog, QSlider, QTabWidget)
 
-from electrum.gui.qt.util import *
+from electrum.gui.qt.util import (WindowModalDialog, WWLabel, Buttons, CancelButton,
+                                  OkButton, CloseButton)
 from electrum.i18n import _
 from electrum.plugin import hook
 from electrum.util import bh2u
@@ -295,8 +299,8 @@ class QtPlugin(QtPluginBase):
 
 
 class Plugin(KeepKeyPlugin, QtPlugin):
-    icon_paired = ":icons/keepkey.png"
-    icon_unpaired = ":icons/keepkey_unpaired.png"
+    icon_paired = "keepkey.png"
+    icon_unpaired = "keepkey_unpaired.png"
 
     @classmethod
     def pin_matrix_widget_class(self):

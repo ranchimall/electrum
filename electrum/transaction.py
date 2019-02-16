@@ -124,7 +124,7 @@ class BCDataStream(object):
             self.read_cursor += length
             return result
         except IndexError:
-            raise SerializationError("attempt to read past end of buffer")
+            raise SerializationError("attempt to read past end of buffer") from None
 
     def can_read_more(self) -> bool:
         if not self.input:
@@ -158,8 +158,8 @@ class BCDataStream(object):
             elif size == 255:
                 size = self._read_num('<Q')
             return size
-        except IndexError:
-            raise SerializationError("attempt to read past end of buffer")
+        except IndexError as e:
+            raise SerializationError("attempt to read past end of buffer") from e
 
     def write_compact_size(self, size):
         if size < 0:
@@ -181,7 +181,7 @@ class BCDataStream(object):
             (i,) = struct.unpack_from(format, self.input, self.read_cursor)
             self.read_cursor += struct.calcsize(format)
         except Exception as e:
-            raise SerializationError(e)
+            raise SerializationError(e) from e
         return i
 
     def _write_num(self, format, num):
@@ -792,12 +792,14 @@ class Transaction:
         return d
 
     @classmethod
-    def from_io(klass, inputs, outputs, locktime=0, flodata=""):
+    def from_io(klass, inputs, outputs, locktime=0, version=None, flodata=""):
         self = klass(None)
         self._inputs = inputs
         self._outputs = outputs
         self.locktime = locktime
         self.flodata = flodata
+        if version is not None:
+            self.version = version
         self.BIP69_sort()
         return self
 

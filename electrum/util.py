@@ -412,6 +412,10 @@ def assert_file_in_datadir_available(path, config_path):
             'Should be at {}'.format(path))
 
 
+def standardize_path(path):
+    return os.path.normcase(os.path.realpath(os.path.abspath(path)))
+
+
 def get_new_wallet_name(wallet_folder: str) -> str:
     i = 1
     while True:
@@ -467,7 +471,6 @@ def to_bytes(something, encoding='utf8') -> bytes:
 
 
 bfh = bytes.fromhex
-hfu = binascii.hexlify
 
 
 def bh2u(x: bytes) -> str:
@@ -478,7 +481,7 @@ def bh2u(x: bytes) -> str:
     >>> bh2u(x)
     '01020A'
     """
-    return hfu(x).decode('ascii')
+    return x.hex()
 
 
 def user_dir():
@@ -494,9 +497,38 @@ def user_dir():
         #raise Exception("No home directory found in environment variables.")
         return
 
+
+def resource_path(*parts):
+    return os.path.join(pkg_dir, *parts)
+
+
+# absolute path to python package folder of electrum ("lib")
+pkg_dir = os.path.split(os.path.realpath(__file__))[0]
+
+
 def is_valid_email(s):
     regexp = r"[^@]+@[^@]+\.[^@]+"
     return re.match(regexp, s) is not None
+
+
+def is_hash256_str(text: str) -> bool:
+    if not isinstance(text, str): return False
+    if len(text) != 64: return False
+    try:
+        bytes.fromhex(text)
+    except:
+        return False
+    return True
+
+
+def is_non_negative_integer(val) -> bool:
+    try:
+        val = int(val)
+        if val >= 0:
+            return True
+    except:
+        pass
+    return False
 
 
 def format_satoshis_plain(x, decimal_point = 8):
